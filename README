@@ -32,6 +32,8 @@ CHANGES
 
  1.05 1999.10.20 - Altered ranking computation on search results  
 
+ 1.06 1999.10.20 - Removed 'use attrs' usage to improve portability  
+
 To install:
 
 perl Makefile.PL

@@ -1,6 +1,6 @@
 package Search::InvertedIndex::DB::DB_File_SplitHash;
 
-# $RCSfile: DB_File_SplitHash.pm,v $ $Revision: 1.4 $ $Date: 1999/10/20 16:35:34 $ $Author: snowhare $
+# $RCSfile: DB_File_SplitHash.pm,v $ $Revision: 1.5 $ $Date: 1999/10/20 16:51:00 $ $Author: snowhare $
 
 use strict;
 use Carp;
@@ -11,7 +11,7 @@ use Class::ParmList;
 use vars qw (@ISA $VERSION);
 
 @ISA     = qw(Class::NamedParms);
-$VERSION = "1.04";
+$VERSION = "1.05";
 
 # Used to catch attempts to open the same db 
 # to multiple objects simultaneously and to
@@ -668,7 +668,7 @@ sub _open_multi_map {
 	$FH_COUNT++;
 	my $fh = "FH_COUNTER_$FH_COUNT";
 	no strict 'refs';
-	open ($fh, "+<&=$fd") or croak (__PACKAGE__ . "::_open_multi_map() - unable to open file descriptor for locking: $!");
+	CORE::open ($fh, "+<&=$fd") or croak (__PACKAGE__ . "::_open_multi_map() - unable to open file descriptor for locking: $!");
 	use strict 'refs';
 	$self->SUPER::set({ -filehandle => $fh, 
                          -lock_mode => 'UN',

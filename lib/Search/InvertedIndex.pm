@@ -1,6 +1,6 @@
 package Search::InvertedIndex;
 
-# $RCSfile: InvertedIndex.pm,v $ $Revision: 1.29 $ $Date: 1999/10/20 16:34:05 $ $Author: snowhare $
+# $RCSfile: InvertedIndex.pm,v $ $Revision: 1.30 $ $Date: 1999/10/20 16:51:04 $ $Author: snowhare $
 
 use strict;
 use Carp;
@@ -11,7 +11,7 @@ use Search::InvertedIndex::AutoLoader;
 use vars qw (@ISA $VERSION);
 
 @ISA     = qw(Class::NamedParms);
-$VERSION = "1.05";
+$VERSION = "1.06";
 
 # Used to catch attempts to open the same -map 
 # to multiple objects simultaneously and to
@@ -105,6 +105,8 @@ of records can be searched extremely quickly.
  1.04 1999.07.01 - Documentation fixes and caching system bugfixes.
 
  1.05 1999.10.20 - Altered ranking computation on search results  
+
+ 1.06 1999.10.20 - Removed 'use attrs' usage to improve portability  
 
 =head2 Public API
 
@@ -3929,6 +3931,10 @@ It is organized into sub-sets of information by database key name space:
  $GROUP_ENUM_DATA<group_enum>$KEY_ENUM_TO_KEY_AND_CHAIN<key_enum>             -> _prev_key_enum_ _next_key_enum_ key 
 
 =cut
+
+=head1 VERSION
+
+1.06
 
 =head1 COPYRIGHT
 
