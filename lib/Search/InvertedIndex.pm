@@ -1,6 +1,6 @@
 package Search::InvertedIndex;
 
-# $RCSfile: InvertedIndex.pm,v $ $Revision: 1.28 $ $Date: 1999/06/18 06:35:31 $ $Author: snowhare $
+# $RCSfile: InvertedIndex.pm,v $ $Revision: 1.29 $ $Date: 1999/10/20 16:34:05 $ $Author: snowhare $
 
 use strict;
 use Carp;
@@ -11,7 +11,7 @@ use Search::InvertedIndex::AutoLoader;
 use vars qw (@ISA $VERSION);
 
 @ISA     = qw(Class::NamedParms);
-$VERSION = "1.03";
+$VERSION = "1.05";
 
 # Used to catch attempts to open the same -map 
 # to multiple objects simultaneously and to
@@ -55,12 +55,25 @@ Search::InvertedIndex - A manager for inverted index maps
             -lock_mode => 'EX',
          -lock_timeout => 30,
        -blocking_locks => 0,
-                -cache => 1000000,
+            -cachesize => 1000000,
         -write_through => 0, 
-      -read_write_mode => 'RDONLY';
+      -read_write_mode => 'RDWR';
         });
 
-  my $inv_map = Search::Inverted->new({ -database => $database });
+  my $scratch_database = Search::InvertedIndex::DB::DB_File_SplitHash->new({
+             -map_name => '/www/search-engine/databases/test-maps/test',
+				-multi => 4,
+            -file_mode => 0644,
+            -lock_mode => 'EX',
+         -lock_timeout => 30,
+       -blocking_locks => 0,
+            -cachesize => 1000000,
+        -write_through => 0, 
+      -read_write_mode => 'RDWR';
+        });
+
+
+  my $inv_map = Search::Inverted->new({ -database => $database, -scratch_database => $scratch_database });
   my $query = Search::InvertedIndex::Query->new(...);
   my $result = $inv_map->query({ -query => $query });
 
@@ -88,6 +101,10 @@ of records can be searched extremely quickly.
                    Performance tweaking. Roughly 3x improvement.
 
  1.03 1999.06.30 - Documentation fixes.
+ 
+ 1.04 1999.07.01 - Documentation fixes and caching system bugfixes.
+
+ 1.05 1999.10.20 - Altered ranking computation on search results  
 
 =head2 Public API
 
@@ -112,7 +129,7 @@ Example 1:
             -lock_mode => 'EX',
          -lock_timeout => 30,
        -blocking_locks => 0,
-                -cache => 1000000,
+            -cachesize => 1000000,
         -write_through => 0, 
       -read_write_mode => 'RDONLY';
         });
@@ -989,14 +1006,14 @@ sub search {
 	my $parms = Class::ParmList->new ({ -parms => $parm_ref,
                                         -legal => ['-cache'], 
                                      -required => ['-query'],
-                                     -defaults => {-use_cache => 1},
+                                     -defaults => {-cache => 1},
                                   });
 
     if (not defined $parms) {
     	my $error_message = Class::ParmList->error;
 		croak (__PACKAGE__ . "::search() - $error_message\n");
     }
-	my ($query,$use_cache) = $parms->get(-query,-cache);
+	my ($query,$use_cache) = $parms->get(qw(-query -cache));
 	my $db    = $self->get(-database);
 	if (not $db) {
 		croak (__PACKAGE__ . "::search() - No database opened for use\n");
@@ -1011,7 +1028,8 @@ sub search {
 			                                    -keep_last => $cache_size,
 											 });
 		    $cache_key = $cache->make_cache_key({ -key => $query });	
-			my ($hit,$result_from_cache) = $cache->check_cache({ -cache_key => $cache_key, });
+			$cache_key = $self->_untaint($cache_key);
+			my ($hit,$result_from_cache) = $cache->check({ -cache_key => $cache_key, });
 			return $result_from_cache if ($hit);
 		}
 	}
@@ -1034,8 +1052,8 @@ sub search {
 
 	# If we are caching, cache the result of the search
 	if ($cache) {
-		$cache->update_cache({ -cache_key => $cache_key, 
-		                           -value => $result,
+		$cache->update({ -cache_key => $cache_key, 
+		                     -value => $result,
 						   }); 
 	}
 
@@ -3447,7 +3465,7 @@ sub _bare_search {
         %$parm_ref = @_; 
     }
 	my $parms = Class::ParmList->new ({ -parms => $parm_ref,
-                                        -legal => ['-cache'], 
+                                        -legal => ['-use_cache'], 
                                      -required => ['-query'],
                                      -defaults => { -cache => 0},
                                   });
@@ -3456,7 +3474,7 @@ sub _bare_search {
     	my $error_message = Class::ParmList->error;
 		croak (__PACKAGE__ . "::search() - $error_message\n");
     }
-	my ($query,$use_cache) = $parms->get(-query,-cache);
+	my ($query,$use_cache) = $parms->get('-query','-use_cache');
 	my $db    = $self->get(-database);
 	if (not $db) {
 		croak (__PACKAGE__ . "::search() - No database opened for use\n");
@@ -3575,8 +3593,7 @@ sub _get_data_for_index_enum {
 =item C<_and($terms);>
 
 Takes the passed list of search data results and merges them
-via logical _and. Merged ranking is the arithmetical _average_
-of the individual rankings.
+via logical _and. Merged ranking is the sum of the individual rankings.
 
 =back
 
@@ -3604,9 +3621,10 @@ sub _and {
 			}
 		}
 	}
-	foreach $key (keys %merged) { # arithmetical average each term
-		$merged{$key} /= $n_terms;
-	}
+#	foreach $key (keys %merged) { # arithmetical average each term
+#		$merged{$key} /= $n_terms;
+#	}
+
 	\%merged;
 }
 
@@ -3617,8 +3635,8 @@ sub _and {
 =item C<_nand($terms);>
 
 Takes the passed list of search data results and merges them
-via logical NAND (Not And). Merged ranking is the arithmetical 
-_average_ of the individual rankings.
+via logical NAND (Not And). Merged ranking is the sum
+of the individual rankings.
 
 =back
 
@@ -3649,13 +3667,9 @@ sub _nand {
 	}
 
 	# Discard things that appear in ALL terms
-	# and compute arithmetical averages of the
-	# other terms
 	my @merge_keys = keys %merged;
 	foreach $key (@merge_keys) {
-		if ($count{$key} != $n_terms) {
-			$merged{$key} /= $count{$key};
-		} else {
+		if ($count{$key} == $n_terms) {
 			delete $merged{$key};
 		}
 	}
@@ -3669,8 +3683,7 @@ sub _nand {
 =item C<_or($terms);>
 
 Takes the passed list of search data results and merges them
-via logical OR. Merged ranking is the arithmetical _average_
-of the individual rankings.
+via logical OR. Merged ranking is the sum of the individual rankings.
 
 =back
 
@@ -3701,10 +3714,11 @@ sub _or {
 	}
 
 	# Compute arithmetical averages of the terms
-	my @merge_keys = keys %merged;
-	foreach $key (@merge_keys) {
-		$merged{$key} /= $count{$key};
-	}
+#	my @merge_keys = keys %merged;
+#	foreach $key (@merge_keys) {
+#		$merged{$key} /= $count{$key};
+#	}
+
 	\%merged;
 }
 
@@ -3806,6 +3820,30 @@ sub _increment_enum {
 	}
 	$hexwords[2] = sprintf('%0.4lx',$word2);
 	join('',@hexwords);
+}
+
+################################################################
+
+=over 4
+
+=item C<_untaint($string);>
+
+Untaints the passed string. Use with care.
+
+=back
+
+=cut
+
+sub _untaint {
+	my ($self) = shift;
+	my $string;
+	if (ref $self) {
+		$string = $self;
+	} else {
+		($string) = @_;
+	}
+	my ($untainted_string) = $string =~ m/^(.*)$/s;
+	$untainted_string;
 }
 
 ################################################################

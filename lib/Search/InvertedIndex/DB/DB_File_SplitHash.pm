@@ -1,6 +1,6 @@
 package Search::InvertedIndex::DB::DB_File_SplitHash;
 
-# $RCSfile: DB_File_SplitHash.pm,v $ $Revision: 1.3 $ $Date: 1999/06/18 06:35:39 $ $Author: snowhare $
+# $RCSfile: DB_File_SplitHash.pm,v $ $Revision: 1.4 $ $Date: 1999/10/20 16:35:34 $ $Author: snowhare $
 
 use strict;
 use Carp;
@@ -11,7 +11,7 @@ use Class::ParmList;
 use vars qw (@ISA $VERSION);
 
 @ISA     = qw(Class::NamedParms);
-$VERSION = "1.02";
+$VERSION = "1.04";
 
 # Used to catch attempts to open the same db 
 # to multiple objects simultaneously and to
@@ -35,7 +35,7 @@ Search::InvertedIndex::DB::DB_File_SplitHash - A Berkeley database interface obj
             -lock_mode => 'EX',
          -lock_timeout => 30,
        -blocking_locks => 0,
-                -cache => 1000000,
+            -cachesize => 1000000,
         -write_through => 0, 
       -read_write_mode => 'RDONLY';
         });
@@ -56,7 +56,7 @@ Provides a standard interface to an underlaying database -
 in this case Berkeley DB as extended by the Tie::DB_File::SplitHash
 package.
 
-There are elevent standard API calls required of any database interface
+There are twelve standard API calls required of any database interface
 used by the Search::InvertedIndex module:
 
  new     - Takes all parameters required for initialization. 
@@ -72,6 +72,7 @@ used by the Search::InvertedIndex module:
  delete  - Removes a -key and associated -value from database. Returns true on success, false on failure.
  clear   - Clears all keys/values from the database 
  status  - Returns open and lock status messages. 
+
  DESTROY - Used to dispose of the database object
 
 =head1 CHANGES
@@ -81,6 +82,10 @@ used by the Search::InvertedIndex module:
  1.01 1999.06.17 - Bug fix to 'close' method. Failed to clear the filehandle used for locking.
 
  1.02 1999.06.18 - Major bugfix to locking system and performance tweaking
+
+ 1.03 1999.07.01 - Documentation corrections.
+
+ 1.04 1999.10.20 - Removed use of 'use attr' for portability improvement
 
 =head2 Public API
 
@@ -178,7 +183,7 @@ Example 1: $inv_map->open;
 sub open {
 	my $self= shift;
 
-	use attrs qw(method);
+#	use attrs qw(method);
 	
 	# Check if they have _already_ opened this map
 	my ($map) = $self->SUPER::get(-map_name);
@@ -493,7 +498,7 @@ Deletes the -value at the -key location in the database.
 
 sub delete {
 	my ($self) = shift;
-	use attrs qw (method);
+#	use attrs qw (method);
 
 	# We *DON'T* use Class::ParmList here because this routine
 	# is called many thousands of times. Performance counts here.
@@ -595,7 +600,7 @@ sub clear {
 Internal method. Not for access outside of the module.
 
 Actually open the map for use using either DB_File or
-Multi_DB_File_Hash as appropriate.
+Tie::DB_File_SplitHash as appropriate.
 
 Example 1: $self->_open_multi_map;
 

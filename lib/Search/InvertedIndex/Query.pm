@@ -1,6 +1,6 @@
 package Search::InvertedIndex::Query;
 
-# $RCSfile: Query.pm,v $ $Revision: 1.6 $ $Date: 1999/06/15 22:31:07 $ $Author: snowhare $
+# $RCSfile: Query.pm,v $ $Revision: 1.7 $ $Date: 1999/10/20 16:35:45 $ $Author: snowhare $
 
 use strict;
 use Carp;

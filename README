@@ -17,14 +17,20 @@ Search::InvertedIndex
 
 CHANGES
 
- 1.00 - Initial release
+ 1.00 1999.06.16 - Initial release
 
- 1.01 - Documentation fixes, addition of 'database reopen' test
-        to test.pl, and fix of bad close condition in
-        Search::InvertedIndex::DB::DB_File_SplitHash module
+ 1.01 1999.06.17 - Documentation fixes and fix to 'close' method in 
+                   Search::InvertedIndex::DB::DB_File_SplitHash
 
- 1.02 - Major bug fix to locking system. Performance tweeks
-        (roughly 3x improvement in speed)
+ 1.02 1999.06.18 - Major bugfix to locking system. 
+                   Performance tweaking. Roughly 3x improvement.
+
+ 1.03 1999.06.30 - Documentation fixes.
+
+ 1.04 1999.07.01 - Documentation fixes and caching system bugfixes.
+                   (never publically released)
+
+ 1.05 1999.10.20 - Altered ranking computation on search results  
 
 To install:
 
