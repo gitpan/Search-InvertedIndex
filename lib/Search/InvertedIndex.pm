@@ -10,7 +10,7 @@ use Search::InvertedIndex::AutoLoader;
 use vars qw (@ISA $VERSION);
 
 @ISA     = qw(Class::NamedParms);
-$VERSION = '1.11';
+$VERSION = '1.12';
 
 # Used to catch attempts to open the same -map
 # to multiple objects simultaneously and to
@@ -183,6 +183,10 @@ determine initialization requirements.
  1.11 2000.11.29 - Added 'Search::InvertedIndex::DB::Mysql' (authored by
                    Michael Cramer <cramer@webkist.com>) database driver
                    to package.
+
+ 1.12 2002.04.09 - Squashed bug in removal of an index from a group when the index doesn't
+                   exist in that group that caused index counts for the group to be decremented
+                   in error.
 
 =head2 Public API
 
@@ -2490,15 +2494,20 @@ sub remove_index_from_group {
 
 	# Get the index_enum for this index
 	my $index_enum = $db->get({ -key => "$INDEX$index" });
-	return if (not defined $index_enum);
+	return unless (defined $index_enum);
 
 	# Get the group chain entry for this index
 	my ($index_chain_entry) = $db->get({ -key => "$GROUP_ENUM_DATA$group_enum$INDEX_ENUM_GROUP_CHAIN$index_enum" });
-	return if (not defined $index_chain_entry);
-	
+
+    # If we did not find a matching index entry for removal - bail: There is nothing we need to do.
+	return unless (defined $index_chain_entry);
+
 	# Remove the index from the INDEXED_KEY_LIST
 	my ($indexed_key_list_record) = $db->get({ -key => "$GROUP_ENUM_DATA$group_enum$INDEXED_KEY_LIST$index_enum" });
-	$indexed_key_list_record = '' if (not defined $indexed_key_list_record);
+
+    # If there was no match for the index, bail - there is nothing to do.
+    return unless (defined $indexed_key_list_record);
+
 	my ($key_enum_data) = $self->_unpack_list($indexed_key_list_record);
 	my @key_enums = keys %$key_enum_data;
 	my @zeroed_key_enums = ();
@@ -4100,11 +4109,11 @@ It is organized into sub-sets of information by database key name space:
 
 =head1 VERSION
 
-1.11
+1.12
 
 =head1 COPYRIGHT
 
-Copyright 1999, Benjamin Franz (<URL:http://www.nihongo.org/snowhare/>) and
+Copyright 1999-2002, Benjamin Franz (<URL:http://www.nihongo.org/snowhare/>) and
 FreeRun Technologies, Inc. (<URL:http://www.freeruntech.com/>). All Rights Reserved.
 This software may be copied or redistributed under the same terms as Perl itelf.
 

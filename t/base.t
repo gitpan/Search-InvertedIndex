@@ -30,8 +30,8 @@ my $test_subs = { 1 => { -code => \&test1, -desc => 'open/lock database.....' },
                   7 => { -code => \&test7, -desc => 'index data/key removal.' },
                   8 => { -code => \&test8, -desc => 'update.................' },
                   9 => { -code => \&test9, -desc => 'preload................' },
-                 10 => { -code => \&test10, -desc => 'update + search........' },
-                 11 => { -code => \&test11, -desc => 'preload + search.......' },
+                 10 => { -code => \&test10, -desc => 'update + search.......' },
+                 11 => { -code => \&test11, -desc => 'preload + search......' },
                  };
 
 print $do_tests[0],'..',$do_tests[$#do_tests],"\n";
@@ -935,6 +935,15 @@ sub test8 {
                 return "failed - value '$test_set->{$index}->{-data}->{$item}' was written for key '$item', but '$data->{$item}' was read\n";
             }
         }
+    }
+
+    # Check that deletion of non-existing indexes from system does not result in
+    # problems.
+    my $n_indexes = $inv_map->number_of_indexes_in_group({ -group => $group });
+    $inv_map->remove_index_from_all({ -index => 'no such animal' });
+    my $new_n_indexes = $inv_map->number_of_indexes_in_group({ -group => $group });
+    if ($new_n_indexes != $n_indexes) {
+        return ("failed - Deletion of non-existent keys resulted in incorrect index counts.\n");
     }
 
     # Verify that key deletion manages indexes and index counters correctly
@@ -1964,6 +1973,17 @@ sub test3 {
     }
     if ($#errors > -1) {
         return "failed - Groups (","@errors",") were read that were not written\n";
+    }
+
+    # Check that deletion of non-existing indexes from system does not result in
+    # problems.
+    foreach my $group (@test_groups) {
+        my $n_indexes = $inv_map->number_of_indexes_in_group({ -group => $group });
+        $inv_map->remove_index_from_all({ -index => 'no such animal' });
+        my $new_n_indexes = $inv_map->number_of_indexes_in_group({ -group => $group });
+        if ($new_n_indexes != $n_indexes) {
+            return ("failed - Deletion of non-existent keys resulted in incorrect index counts.\n");
+        }
     }
 
     # check that we can iterate over the groups and delete

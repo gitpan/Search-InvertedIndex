@@ -30,3 +30,6 @@
                    Michael Cramer <cramer@webkist.com>) database driver
                    to package.
 
+1.12 2002.04.09 - Squashed bug in removal of an index from a group when the index doesn't
+                  exist in that group that caused index counts for the group to be decremented
+                  in error.
