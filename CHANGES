@@ -1,0 +1,21 @@
+ 1.00 1999.06.16 - Initial release
+
+ 1.01 1999.06.17 - Documentation fixes and fix to 'close' method in 
+                   Search::InvertedIndex::DB::DB_File_SplitHash
+
+ 1.02 1999.06.18 - Major bugfix to locking system. 
+                   Performance tweaking. Roughly 3x improvement.
+
+ 1.03 1999.06.30 - Documentation fixes.
+
+ 1.04 1999.07.01 - Documentation fixes and caching system bugfixes.
+                   (never publically released)
+
+ 1.05 1999.10.20 - Altered ranking computation on search results  
+
+ 1.06 1999.10.20 - Removed 'use attrs' usage to improve portability  
+
+ 1.08 2000.01.25 - Bug fix to multi database code and documentation updates
+
+ 1.09 2000.03.23 - Bug fix to 'Search::InvertedIndex::DB:DB_File_SplitHash' submodule  
+                   to manage case where 'open' is not performed before 'close' is called. 

@@ -34,6 +34,11 @@ CHANGES
 
  1.06 1999.10.20 - Removed 'use attrs' usage to improve portability  
 
+ 1.08 2000.01.25 - Bug fix to multi database code and documentation updates
+
+ 1.09 2000.03.23 - Bug fix to 'Search::InvertedIndex::DB:DB_File_SplitHash' submodule  
+                   to manage case where 'open' is not performed before 'close' is called. 
+
 To install:
 
 perl Makefile.PL

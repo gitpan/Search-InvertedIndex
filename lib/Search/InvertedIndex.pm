@@ -11,7 +11,7 @@ use Search::InvertedIndex::AutoLoader;
 use vars qw (@ISA $VERSION);
 
 @ISA     = qw(Class::NamedParms);
-$VERSION = "1.08";
+$VERSION = "1.09";
 
 # Used to catch attempts to open the same -map 
 # to multiple objects simultaneously and to
@@ -60,20 +60,7 @@ Search::InvertedIndex - A manager for inverted index maps
       -read_write_mode => 'RDWR';
         });
 
-  my $scratch_database = Search::InvertedIndex::DB::DB_File_SplitHash->new({
-             -map_name => '/www/search-engine/databases/test-maps/test',
-				-multi => 4,
-            -file_mode => 0644,
-            -lock_mode => 'EX',
-         -lock_timeout => 30,
-       -blocking_locks => 0,
-            -cachesize => 1000000,
-        -write_through => 0, 
-      -read_write_mode => 'RDWR';
-        });
-
-
-  my $inv_map = Search::Inverted->new({ -database => $database, -scratch_database => $scratch_database });
+  my $inv_map = Search::Inverted->new({ -database => $database });
 
 ##########################################################
 # Example Update
@@ -173,6 +160,9 @@ of records can be searched extremely quickly.
 
  1.08 2000.01.25 - Bugfix to 'Search::InvertedIndex::DB:DB_File_SplitHash' submodule  
                    and documentation additions/fixes
+
+ 1.09 2000.03.23 - Bugfix to 'Search::InvertedIndex::DB:DB_File_SplitHash' submodule  
+                   to manage case where 'open' is not performed before close is called. 
 
 =head2 Public API
 

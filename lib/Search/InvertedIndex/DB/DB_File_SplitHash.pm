@@ -12,7 +12,7 @@ use Tie::DB_File::SplitHash;
 use vars qw (@ISA $VERSION);
 
 @ISA     = qw(Class::NamedParms);
-$VERSION = "1.06";
+$VERSION = "1.07";
 
 # Used to catch attempts to open the same db 
 # to multiple objects simultaneously and to
@@ -31,7 +31,7 @@ Search::InvertedIndex::DB::DB_File_SplitHash - A Berkeley database interface obj
 
   my $db = Search::InvertedIndex::DB::DB_File_SplitHash->new({
              -map_name => '/www/search-engine/databases/test-map_names/test',
-				-multi => 4,
+                -multi => 4,
             -file_mode => 0644,
             -lock_mode => 'EX',
          -lock_timeout => 30,
@@ -62,7 +62,7 @@ used by the Search::InvertedIndex module:
 
  new     - Takes all parameters required for initialization. 
            Free form parameters as required by the underlaying
-		   database.
+           database.
  open    - Actually opens the database. No parameters.
  close   - Closes the database. No parameters.
  lock    - Sets a lock state of (UN, SH or EX) and optionally allows setting/
@@ -88,8 +88,9 @@ used by the Search::InvertedIndex module:
 
  1.04 1999.10.20 - Removed use of 'use attr' for portability improvement
 
- 1.06 2000.01.25 - Bugfix (added 'use Tie::DB_File::SplitHash;' to
-                   initialization)
+ 1.06 2000.01.25 - Bugfix (added 'use Tie::DB_File::SplitHash;' to initialization)
+
+ 1.07 2000.03.23 - Bugfix for disposal when database was never actually opened 
 
 =head2 Public API
 
@@ -123,15 +124,15 @@ Example 2: my $inv_map = Search::InvertedIndex->new({
 =cut
 
 sub new {
-	my $proto = shift;
+    my $proto = shift;
     my $class = ref ($proto) || $proto;
-	my $self  = Class::NamedParms->new(qw(-map_name  -file_mode     -write_through
+    my $self  = Class::NamedParms->new(qw(-map_name  -file_mode     -write_through
                                           -cachesize -lock_timeout  -blocking_locks
-									      -fd        -filehandle    -read_write_mode
-									      -multi     -lock_mode     -open_status 
-										  -ident     -hash));
+                                          -fd        -filehandle    -read_write_mode
+                                          -multi     -lock_mode     -open_status 
+                                          -ident     -hash));
 
-	bless $self,$class;
+    bless $self,$class;
 
    # Read any passed parms
     my ($parm_ref) = {};
@@ -141,33 +142,33 @@ sub new {
         %$parm_ref = @_; 
     }
 
-	# Check the passed parms and set defaults as necessary
+    # Check the passed parms and set defaults as necessary
     my $parms = Class::ParmList->new({ -parms => $parm_ref,
                                  -legal => [-map_name,    -cachesize,     -read_write_mode,
-								            -multi,       -write_through,
-										    -lock_mode,   -lock_timeout,
-											-file_mode,   -blocking_locks,
+                                            -multi,       -write_through,
+                                            -lock_mode,   -lock_timeout,
+                                            -file_mode,   -blocking_locks,
                                            ],
-						      -required => [-map_name, -lock_mode ],
+                              -required => [-map_name, -lock_mode ],
                               -defaults => { -multi => 4,            -blocking_locks => 0,
                                          -file_mode => 0666,               -cachesize => 5000000,
-							         -write_through => 0,            -read_write_mode => 'RDWR',
+                                     -write_through => 0,            -read_write_mode => 'RDWR',
                                       -lock_timeout => 30,      
-							               },
-   							});
+                                           },
+                               });
 
-   	if (not defined $parms) {
-   	    my $error_message = Class::ParmList->error;
-   	    croak (__PACKAGE__ . "::new() - $error_message\n");
-	}
-	$self->SUPER::set($parms->all_parms);
+       if (not defined $parms) {
+           my $error_message = Class::ParmList->error;
+           croak (__PACKAGE__ . "::new() - $error_message\n");
+    }
+    $self->SUPER::set($parms->all_parms);
     $self->SUPER::set({ -fd => undef,
-             -open_status => 0,
-         -filehandle => undef, 
-		 -ident => time,
+               -open_status => 0,
+                -filehandle => undef, 
+                     -ident => time,
      });
 
-	$self;
+    $self;
 }
 
 ###############################################################
@@ -185,29 +186,29 @@ Example 1: $inv_map->open;
 =cut
 
 sub open {
-	my $self= shift;
+    my $self= shift;
 
-#	use attrs qw(method);
-	
-	# Check if they have _already_ opened this map
-	my ($map) = $self->SUPER::get(-map_name);
-	if ($map eq '') {
-		croak (__PACKAGE__ . "::open() - Called without a -map_name specification\n");
-	}
-	if (defined $open_maps->{$map}) {
-		croak (__PACKAGE__ . "::open() - Attempted to open -map_name '$map' multiple times\n");
-	}
+#    use attrs qw(method);
+    
+    # Check if they have _already_ opened this map
+    my ($map) = $self->SUPER::get(-map_name);
+    if ($map eq '') {
+        croak (__PACKAGE__ . "::open() - Called without a -map_name specification\n");
+    }
+    if (defined $open_maps->{$map}) {
+        croak (__PACKAGE__ . "::open() - Attempted to open -map_name '$map' multiple times\n");
+    }
 
-	# Do it.
-	$self->_open_multi_map;
-	if (not defined $open_maps->{$map}) {
-		croak (__PACKAGE__ . "::open() - failed to open '$map'. Reason unknown. $!\n");
-	}
-	my ($fd) = $self->SUPER::get(-fd);
-	if (not defined $fd) {
-		croak (__PACKAGE__ . "::open() - failed to open '$map' - bad file descriptor returned\n");
-	}
-	$self->SUPER::set({ -open_status => 1 });
+    # Do it.
+    $self->_open_multi_map;
+    if (not defined $open_maps->{$map}) {
+        croak (__PACKAGE__ . "::open() - failed to open '$map'. Reason unknown. $!\n");
+    }
+    my ($fd) = $self->SUPER::get(-fd);
+    if (not defined $fd) {
+        croak (__PACKAGE__ . "::open() - failed to open '$map' - bad file descriptor returned\n");
+    }
+    $self->SUPER::set({ -open_status => 1 });
 }
 
 ####################################################################
@@ -230,18 +231,18 @@ Example 2:
 =cut
 
 sub status {
-	my $self = shift;
+    my $self = shift;
 
-	my ($request) = @_;
+    my ($request) = @_;
 
-	$request = lc ($request);
-	if ($request eq '-open') {
-		return $self->SUPER::get(-open_status);
-	}
-	if ($request eq '-lock_mode') {
-		return uc($self->SUPER::get(-lock_mode));
-	}
-	croak (__PACKAGE__ . "::status - Invalid status request of '$request' made. Only '-lock' and '-open' are legal.\n");
+    $request = lc ($request);
+    if ($request eq '-open') {
+        return $self->SUPER::get(-open_status);
+    }
+    if ($request eq '-lock_mode') {
+        return uc($self->SUPER::get(-lock_mode));
+    }
+    croak (__PACKAGE__ . "::status - Invalid status request of '$request' made. Only '-lock' and '-open' are legal.\n");
 }
 
 ####################################################################
@@ -271,7 +272,7 @@ to match the new settings.
 =cut
 
 sub lock {
-	my $self = shift;
+    my $self = shift;
 
     my ($parm_ref) = {};
     if ($#_ == 0) {
@@ -279,73 +280,73 @@ sub lock {
     } elsif ($#_ > 0) { 
         %$parm_ref = @_; 
     }
-	my $parms = Class::ParmList->new ({ -parms => $parm_ref,
+    my $parms = Class::ParmList->new ({ -parms => $parm_ref,
                                         -legal => [-blocking_locks, -lock_timeout], 
                                      -required => [-lock_mode],
                                    });
     if (not defined $parms) {
-    	my $error_message = Class::ParmList->error;
-		croak (__PACKAGE__ . "::lock() - $error_message\n");
+        my $error_message = Class::ParmList->error;
+        croak (__PACKAGE__ . "::lock() - $error_message\n");
     }
-	my $map = $self->SUPER::get(-map_name);
-	if (not defined $open_maps->{$map}) {
-		croak (__PACKAGE__ . "::lock() - attempted to lock a map '$map' that was not open.\n");
-	}
-	my ($new_lock_mode,$new_blocking_locks,$new_lock_timeout) = $parms->get(-lock_mode,-blocking_locks,-lock_timeout);
-	my ($old_lock_mode) = $self->SUPER::get(-lock_mode);
-	$old_lock_mode      = uc ($old_lock_mode);
+    my $map = $self->SUPER::get(-map_name);
+    if (not defined $open_maps->{$map}) {
+        croak (__PACKAGE__ . "::lock() - attempted to lock a map '$map' that was not open.\n");
+    }
+    my ($new_lock_mode,$new_blocking_locks,$new_lock_timeout) = $parms->get(-lock_mode,-blocking_locks,-lock_timeout);
+    my ($old_lock_mode) = $self->SUPER::get(-lock_mode);
+    $old_lock_mode      = uc ($old_lock_mode);
 
-	if (defined $new_blocking_locks) {
-		$self->SUPER::set({ -blocking_locks => $new_blocking_locks });
-	}
-	if (defined $new_lock_timeout) {
-		$self->SUPER::set({ -lock_timeout => $new_lock_timeout });
-	}
-	my ($lock_timeout,$blocking_locks,$fh) = $self->SUPER::get(-lock_timeout,-blocking_locks,-filehandle);
-	if (not defined $fh) {
-		croak (__PACKAGE__ . "::lock() - no filehandle available for locking\n");
-	}
-	$new_lock_mode = uc ($new_lock_mode);
-	return if ($new_lock_mode eq $old_lock_mode);
+    if (defined $new_blocking_locks) {
+        $self->SUPER::set({ -blocking_locks => $new_blocking_locks });
+    }
+    if (defined $new_lock_timeout) {
+        $self->SUPER::set({ -lock_timeout => $new_lock_timeout });
+    }
+    my ($lock_timeout,$blocking_locks,$fh) = $self->SUPER::get(-lock_timeout,-blocking_locks,-filehandle);
+    if (not defined $fh) {
+        croak (__PACKAGE__ . "::lock() - no filehandle available for locking\n");
+    }
+    $new_lock_mode = uc ($new_lock_mode);
+    return if ($new_lock_mode eq $old_lock_mode);
 
-	# Sync if leaving 'EX' mode for another mode 
-	if (($new_lock_mode ne 'EX') and ($old_lock_mode eq 'EX')) {
-		if (not defined $map) {
-			croak (__PACKAGE__ . "::lock() - no database open for locking\n");
-		}
-		my $db_object = $open_maps->{$map};
-		if (not defined $db_object) {
-			croak (__PACKAGE__ . "::lock() - no database object available for syncing $map\n");
-		}
-		$db_object->sync;
-	}
+    # Sync if leaving 'EX' mode for another mode 
+    if (($new_lock_mode ne 'EX') and ($old_lock_mode eq 'EX')) {
+        if (not defined $map) {
+            croak (__PACKAGE__ . "::lock() - no database open for locking\n");
+        }
+        my $db_object = $open_maps->{$map};
+        if (not defined $db_object) {
+            croak (__PACKAGE__ . "::lock() - no database object available for syncing $map\n");
+        }
+        $db_object->sync;
+    }
 
-	# Assemble the locking flags
-	my $operation = 0;
-	if (not $blocking_locks) {
-		$operation |= LOCK_NB();
-	}
-	if ($new_lock_mode eq 'EX') {
-		$operation |= LOCK_EX();
-	} elsif ($new_lock_mode eq 'SH') {
-		$operation |= LOCK_SH();
-	} elsif ($new_lock_mode eq 'UN') {
-		$operation |= LOCK_UN();
-	} else {
-		croak (__PACKAGE__ . "::lock() - Unknown locking mode of '$new_lock_mode' was specified\n");
-	}
- 	# Get the new lock or die trying	
-	$lock_timeout *= 10;
-	no strict 'refs';
-	until (flock ($fh,$operation)) {
-		if (0 >= $lock_timeout--) {
-			croak (__PACKAGE__ . "::lock() - Unable to obtain a '$new_lock_mode' lock on the map: $!");
-		}
-		select (undef,undef,undef,0.1); # Sleep 1/10th of a second
-	}
-	use strict 'refs';
-	# The idea is to never think we have a lock we don't actually have
-	$self->SUPER::set({ -lock_mode => $new_lock_mode });
+    # Assemble the locking flags
+    my $operation = 0;
+    if (not $blocking_locks) {
+        $operation |= LOCK_NB();
+    }
+    if ($new_lock_mode eq 'EX') {
+        $operation |= LOCK_EX();
+    } elsif ($new_lock_mode eq 'SH') {
+        $operation |= LOCK_SH();
+    } elsif ($new_lock_mode eq 'UN') {
+        $operation |= LOCK_UN();
+    } else {
+        croak (__PACKAGE__ . "::lock() - Unknown locking mode of '$new_lock_mode' was specified\n");
+    }
+     # Get the new lock or die trying    
+    $lock_timeout *= 10;
+    no strict 'refs';
+    until (flock ($fh,$operation)) {
+        if (0 >= $lock_timeout--) {
+            croak (__PACKAGE__ . "::lock() - Unable to obtain a '$new_lock_mode' lock on the map: $!");
+        }
+        select (undef,undef,undef,0.1); # Sleep 1/10th of a second
+    }
+    use strict 'refs';
+    # The idea is to never think we have a lock we don't actually have
+    $self->SUPER::set({ -lock_mode => $new_lock_mode });
 }
 
 ####################################################################
@@ -361,19 +362,20 @@ Closes the currently open -map_name and flushes all associated buffers.
 =cut
 
 sub close {
-	my ($self) = shift;
-	$self->SUPER::set({ -open_status => 0 });
-	my ($map,$hash) = $self->SUPER::get(-map_name,-hash);
-	return if (not defined $map);
-	my $db_object = $open_maps->{$map};
-	return if (not defined $db_object);
-	$db_object->sync;
-	$db_object = undef;
-	$self->SUPER::clear(qw(-filehandle -fd -hash));
-	delete $open_maps->{$map};
-	if (not untie (%$hash)) {
-		croak(__PACKAGE__ . "::close() - failed to untie hash\n");
-	}
+    my ($self) = shift;
+    $self->SUPER::set({ -open_status => 0 });
+    my ($map) = $self->SUPER::get(-map_name);
+    return if (not defined $map);
+    my $db_object = $open_maps->{$map};
+    return if (not defined $db_object);
+    $db_object->sync;
+    $db_object = undef;
+    my ($hash) = $self->SUPER::get(-hash);
+    $self->SUPER::clear(qw(-filehandle -fd -hash));
+    delete $open_maps->{$map};
+    if (not untie (%$hash)) {
+        croak(__PACKAGE__ . "::close() - failed to untie hash\n");
+    }
 }
 
 ####################################################################
@@ -389,8 +391,8 @@ Closes the currently open -map_name and flushes all associated buffers.
 =cut
 
 sub DESTROY {
-	my ($self) = shift;
-	$self->close;
+    my ($self) = shift;
+    $self->close;
 }
 
 ###############################################################
@@ -408,37 +410,37 @@ method. Returns '1' on success, '0' on failure.
 =cut
 
 sub put {
-	my ($self) = shift;
+    my ($self) = shift;
 
-	# We *DON'T* use Class::ParmList here because this routine
-	# is called many thousands of times. Performance counts here.
+    # We *DON'T* use Class::ParmList here because this routine
+    # is called many thousands of times. Performance counts here.
     my ($parm_ref) = {};
     if ($#_ == 0) {
         $parm_ref  = shift; 
     } elsif ($#_ > 0) { 
         %$parm_ref = @_; 
     }
-	my $parms = {};
-	%$parms = map { (lc($_),$parm_ref->{$_}) } keys %$parm_ref; 
-	my @key_list = keys %$parms;
-	if ($#key_list != 1) {
-		croak (__PACKAGE__ . "::put() - incorrect number of parameters\n");
-	}
-	my $key = $parms->{'-key'};
-	if (not defined $key) {
-		croak (__PACKAGE__ . "::put() - invalid passed -key. 'undef' not allowed as a key.\n");
-	}
-	my $value = $parms->{'-value'};
-	if (not defined $key) {
-		croak (__PACKAGE__ . "::delete() - invalid passed -value. 'undef' not allowed as a value.\n");
-	}
-	my ($map) = $self->SUPER::get(-map_name);
-	my ($db_object) = $open_maps->{$map};
-	my ($status) = $db_object->put($key,$value);
-	if ($status) {
-		return 0;
-	}
-	1;
+    my $parms = {};
+    %$parms = map { (lc($_),$parm_ref->{$_}) } keys %$parm_ref; 
+    my @key_list = keys %$parms;
+    if ($#key_list != 1) {
+        croak (__PACKAGE__ . "::put() - incorrect number of parameters\n");
+    }
+    my $key = $parms->{'-key'};
+    if (not defined $key) {
+        croak (__PACKAGE__ . "::put() - invalid passed -key. 'undef' not allowed as a key.\n");
+    }
+    my $value = $parms->{'-value'};
+    if (not defined $key) {
+        croak (__PACKAGE__ . "::delete() - invalid passed -value. 'undef' not allowed as a value.\n");
+    }
+    my ($map) = $self->SUPER::get(-map_name);
+    my ($db_object) = $open_maps->{$map};
+    my ($status) = $db_object->put($key,$value);
+    if ($status) {
+        return 0;
+    }
+    1;
 }
 
 ####################################################################
@@ -460,32 +462,32 @@ Example:
 =cut
 
 sub get {
-	my ($self) = shift;
+    my ($self) = shift;
 
-	# We *DON'T* use Class::ParmList here because this routine
-	# is called many thousands of times. Performance counts here.
+    # We *DON'T* use Class::ParmList here because this routine
+    # is called many thousands of times. Performance counts here.
     my ($parm_ref) = {};
     if ($#_ == 0) {
         $parm_ref  = shift; 
     } elsif ($#_ > 0) { 
         %$parm_ref = @_; 
     }
-	my $parms = {};
-	%$parms = map { (lc($_),$parm_ref->{$_}) } keys %$parm_ref; 
-	my @key_list = keys %$parms;
-	if ($#key_list != 0) {
-		croak (__PACKAGE__ . "::get() - incorrect number of parameters\n");
-	}
-	my $key = $parms->{'-key'};
-	if (not defined $key) {
-		croak (__PACKAGE__ . "::get() - invalid passed -key. 'undef' not allowed as a key.\n");
-	}
-	my ($value);
-	my ($map) = $self->SUPER::get(-map_name);
-	my ($db_object) = $open_maps->{$map};
-	my ($status) = $db_object->get($key,$value);
-	return undef if ($status);
-	$value;
+    my $parms = {};
+    %$parms = map { (lc($_),$parm_ref->{$_}) } keys %$parm_ref; 
+    my @key_list = keys %$parms;
+    if ($#key_list != 0) {
+        croak (__PACKAGE__ . "::get() - incorrect number of parameters\n");
+    }
+    my $key = $parms->{'-key'};
+    if (not defined $key) {
+        croak (__PACKAGE__ . "::get() - invalid passed -key. 'undef' not allowed as a key.\n");
+    }
+    my ($value);
+    my ($map) = $self->SUPER::get(-map_name);
+    my ($db_object) = $open_maps->{$map};
+    my ($status) = $db_object->get($key,$value);
+    return undef if ($status);
+    $value;
 }
 
 ####################################################################
@@ -501,35 +503,35 @@ Deletes the -value at the -key location in the database.
 =cut
 
 sub delete {
-	my ($self) = shift;
-#	use attrs qw (method);
+    my ($self) = shift;
+#    use attrs qw (method);
 
-	# We *DON'T* use Class::ParmList here because this routine
-	# is called many thousands of times. Performance counts here.
+    # We *DON'T* use Class::ParmList here because this routine
+    # is called many thousands of times. Performance counts here.
     my ($parm_ref) = {};
     if ($#_ == 0) {
         $parm_ref  = shift; 
     } elsif ($#_ > 0) { 
         %$parm_ref = @_; 
     }
-	my $parms = {};
-	%$parms = map { (lc($_),$parm_ref->{$_}) } keys %$parm_ref; 
-	my @key_list = keys %$parms;
-	if ($#key_list != 0) {
-		croak (__PACKAGE__ . "::delete() - incorrect number of parameters\n");
-	}
-	if ($key_list[0] ne '-key') {
-		croak (__PACKAGE__ . "::delete() - invalid passed parameter name of '$key_list[0]'\n");
-	}
-	my $key = $parms->{'-key'};
-	if (not defined $key) {
-		croak (__PACKAGE__ . "::delete() - invalid passed -key value. 'undef' not allowed as a key.\n");
-	}
-	my ($map) = $self->SUPER::get(-map_name);
-	my ($db_object) = $open_maps->{$map};
-	my ($status) = $db_object->del($key);
-	return 0 if ($status);
-	1;
+    my $parms = {};
+    %$parms = map { (lc($_),$parm_ref->{$_}) } keys %$parm_ref; 
+    my @key_list = keys %$parms;
+    if ($#key_list != 0) {
+        croak (__PACKAGE__ . "::delete() - incorrect number of parameters\n");
+    }
+    if ($key_list[0] ne '-key') {
+        croak (__PACKAGE__ . "::delete() - invalid passed parameter name of '$key_list[0]'\n");
+    }
+    my $key = $parms->{'-key'};
+    if (not defined $key) {
+        croak (__PACKAGE__ . "::delete() - invalid passed -key value. 'undef' not allowed as a key.\n");
+    }
+    my ($map) = $self->SUPER::get(-map_name);
+    my ($db_object) = $open_maps->{$map};
+    my ($status) = $db_object->del($key);
+    return 0 if ($status);
+    1;
 }
 ####################################################################
 
@@ -545,32 +547,32 @@ Returns false if the -key does not exist in the database.
 =cut
 
 sub exists {
-	my ($self) = shift;
+    my ($self) = shift;
 
-	# We *DON'T* use Class::ParmList here because this routine
-	# is called many thousands of times. Performance counts here.
+    # We *DON'T* use Class::ParmList here because this routine
+    # is called many thousands of times. Performance counts here.
     my ($parm_ref) = {};
     if ($#_ == 0) {
         $parm_ref  = shift; 
     } elsif ($#_ > 0) { 
         %$parm_ref = @_; 
     }
-	my $parms = {};
-	%$parms = map { (lc($_),$parm_ref->{$_}) } keys %$parm_ref; 
-	my @key_list = keys %$parms;
-	if ($#key_list != 0) {
-		croak (__PACKAGE__ . "::delete() - incorrect number of parameters\n");
-	}
-	if ($key_list[0] ne '-key') {
-		croak (__PACKAGE__ . "::delete() - invalid passed parameter name of '$key_list[0]'\n");
-	}
-	my $key = $parms->{'-key'};
-	if (not defined $key) {
-		croak (__PACKAGE__ . "::delete() - invalid passed -key value. 'undef' not allowed as a key.\n");
-	}
-	my ($map) = $self->SUPER::get(-map_name);
-	my ($db_object) = $open_maps->{$map};
-	$db_object->exists($key);
+    my $parms = {};
+    %$parms = map { (lc($_),$parm_ref->{$_}) } keys %$parm_ref; 
+    my @key_list = keys %$parms;
+    if ($#key_list != 0) {
+        croak (__PACKAGE__ . "::delete() - incorrect number of parameters\n");
+    }
+    if ($key_list[0] ne '-key') {
+        croak (__PACKAGE__ . "::delete() - invalid passed parameter name of '$key_list[0]'\n");
+    }
+    my $key = $parms->{'-key'};
+    if (not defined $key) {
+        croak (__PACKAGE__ . "::delete() - invalid passed -key value. 'undef' not allowed as a key.\n");
+    }
+    my ($map) = $self->SUPER::get(-map_name);
+    my ($db_object) = $open_maps->{$map};
+    $db_object->exists($key);
 }
 
 ####################################################################
@@ -588,11 +590,11 @@ Completely clears the map database.
 =cut
 
 sub clear {
-	my ($self) = shift;
+    my ($self) = shift;
 
-	my ($map) = $self->SUPER::get(-map_name);
-	my ($db_object) = $open_maps->{$map};
-	$db_object->CLEAR;
+    my ($map) = $self->SUPER::get(-map_name);
+    my ($db_object) = $open_maps->{$map};
+    $db_object->CLEAR;
 }
 
 ###############################################################
@@ -613,83 +615,83 @@ Example 1: $self->_open_multi_map;
 =cut
 
 sub _open_multi_map {
-	my ($self) = shift;
+    my ($self) = shift;
 
-	# Open the map
-	my ($map,$cachesize,$file_mode,$lock_mode,$lock_timeout,$blocking_locks,
-		$multi,$write_through,$read_write_mode) = $self->SUPER::get(-map_name,-cachesize,-file_mode,
-		-lock_mode,-lock_timeout,-blocking_locks,-multi,-write_through,-read_write_mode);
+    # Open the map
+    my ($map,$cachesize,$file_mode,$lock_mode,$lock_timeout,$blocking_locks,
+        $multi,$write_through,$read_write_mode) = $self->SUPER::get(-map_name,-cachesize,-file_mode,
+        -lock_mode,-lock_timeout,-blocking_locks,-multi,-write_through,-read_write_mode);
 
-	# Cache tuning is allowed
-	$DB_HASH->{'cachesize'} = $cachesize;
+    # Cache tuning is allowed
+    $DB_HASH->{'cachesize'} = $cachesize;
 
-	# Read/Write mode setup
-	my $flags = 0;
-	$read_write_mode = uc($read_write_mode);
-	if ($read_write_mode eq 'RDONLY') {
-		$flags |= O_RDONLY();
-	} elsif ($read_write_mode eq 'RDWR') {
-		$flags |= O_RDWR()|O_CREAT();
-	} else {
-		croak(__PACKAGE__ . "::_open_multi_map() - Unrecognized -read_write_mode of '$read_write_mode' (must be either 'RDWR' or 'RDONLY')\n");
-	}
+    # Read/Write mode setup
+    my $flags = 0;
+    $read_write_mode = uc($read_write_mode);
+    if ($read_write_mode eq 'RDONLY') {
+        $flags |= O_RDONLY();
+    } elsif ($read_write_mode eq 'RDWR') {
+        $flags |= O_RDWR()|O_CREAT();
+    } else {
+        croak(__PACKAGE__ . "::_open_multi_map() - Unrecognized -read_write_mode of '$read_write_mode' (must be either 'RDWR' or 'RDONLY')\n");
+    }
 
-	# Allow for 'write through'
-	if ($write_through) {
-		$flags |= O_SYNC();
-	}
+    # Allow for 'write through'
+    if ($write_through) {
+        $flags |= O_SYNC();
+    }
 
-	# Tie the map database
-	my $hash = {};
-	my $db_object;
-	if ($multi == 1) { # Performance hack. With only 1 it is 2-3x faster to just tie directly to DB_File.
-		eval { 
-			$db_object = tie (%$hash,'DB_File',$map,$flags,$file_mode,$DB_HASH);
-		};
-	} else {
-		eval { 
-			$db_object = tie (%$hash,'Tie::DB_File::SplitHash',$map,$flags,$file_mode,$DB_HASH,$multi);
-		};
-	}
+    # Tie the map database
+    my $hash = {};
+    my $db_object;
+    if ($multi == 1) { # Performance hack. With only 1 it is 2-3x faster to just tie directly to DB_File.
+        eval { 
+            $db_object = tie (%$hash,'DB_File',$map,$flags,$file_mode,$DB_HASH);
+        };
+    } else {
+        eval { 
+            $db_object = tie (%$hash,'Tie::DB_File::SplitHash',$map,$flags,$file_mode,$DB_HASH,$multi);
+        };
+    }
 
-	if ($@) {
-		croak (__PACKAGE__ . "::_open_multi_map() - Unable to tie -map_name '$map': $@\n");
-	}
+    if ($@) {
+        croak (__PACKAGE__ . "::_open_multi_map() - Unable to tie -map_name '$map': $@\n");
+    }
 
-	if (not defined $db_object) {
-		croak (__PACKAGE__ . "::_open_multi_map() - Unable to tie -map_name '$map': $!\n");
-	}
-	if (not ref $db_object) {
-		croak (__PACKAGE__ . "::_open_multi_map() - Returned object was not a reference: $!\n");
-	}
-	$open_maps->{$map} = $db_object;
+    if (not defined $db_object) {
+        croak (__PACKAGE__ . "::_open_multi_map() - Unable to tie -map_name '$map': $!\n");
+    }
+    if (not ref $db_object) {
+        croak (__PACKAGE__ . "::_open_multi_map() - Returned object was not a reference: $!\n");
+    }
+    $open_maps->{$map} = $db_object;
 
-	# Set locking up for the initial state
-	my $fd = $db_object->fd;
-	if (not defined $fd) {
-		croak (__PACKAGE__ . "::_open_multi_map() - Unable to get a file descriptor for the -map_name '$map': $!\n");
-	}
-	$FH_COUNT++;
-	my $fh = "FH_COUNTER_$FH_COUNT";
-	no strict 'refs';
-	CORE::open ($fh, "+<&=$fd") or croak (__PACKAGE__ . "::_open_multi_map() - unable to open file descriptor for locking: $!");
-	use strict 'refs';
-	$self->SUPER::set({ -filehandle => $fh, 
+    # Set locking up for the initial state
+    my $fd = $db_object->fd;
+    if (not defined $fd) {
+        croak (__PACKAGE__ . "::_open_multi_map() - Unable to get a file descriptor for the -map_name '$map': $!\n");
+    }
+    $FH_COUNT++;
+    my $fh = "FH_COUNTER_$FH_COUNT";
+    no strict 'refs';
+    CORE::open ($fh, "+<&=$fd") or croak (__PACKAGE__ . "::_open_multi_map() - unable to open file descriptor for locking: $!");
+    use strict 'refs';
+    $self->SUPER::set({ -filehandle => $fh, 
                          -lock_mode => 'UN',
                               -hash => $hash,
                                  -fd => $fd,
-					});
-	$lock_mode = 'SH' if (not defined $lock_mode);
-	$lock_mode = uc($lock_mode);
-	eval { $self->lock({ -lock_mode => $lock_mode }); }; # Lock gets its arguments from the object state by default
-	if ($@) {
-		my $error = $@;
-		$self->SUPER::clear(-filehandle,-hash,-fd);
-		delete $open_maps->{$map};
-		undef $hash;
-		undef $db_object;
-		croak (__PACKAGE__ . "::_open_multi_map() - Failed to lock the -map_name '$map' to lock mode '$lock_mode': $error\n");
-	}
+                    });
+    $lock_mode = 'SH' if (not defined $lock_mode);
+    $lock_mode = uc($lock_mode);
+    eval { $self->lock({ -lock_mode => $lock_mode }); }; # Lock gets its arguments from the object state by default
+    if ($@) {
+        my $error = $@;
+        $self->SUPER::clear(-filehandle,-hash,-fd);
+        delete $open_maps->{$map};
+        undef $hash;
+        undef $db_object;
+        croak (__PACKAGE__ . "::_open_multi_map() - Failed to lock the -map_name '$map' to lock mode '$lock_mode': $error\n");
+    }
 
 }
 

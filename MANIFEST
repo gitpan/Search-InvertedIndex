@@ -1,6 +1,7 @@
 MANIFEST
 Makefile.PL
 README
+CHANGES
 lib/Search/InvertedIndex.pm
 lib/Search/InvertedIndex/AutoLoader.pm
 lib/Search/InvertedIndex/DB/DB_File_SplitHash.pm
