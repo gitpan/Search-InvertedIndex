@@ -11,3 +11,4 @@ lib/Search/InvertedIndex/Query/Leaf.pm
 lib/Search/InvertedIndex/Result.pm
 lib/Search/InvertedIndex/Update.pm
 t/base.t
+META.yml                                 Module meta-data (added by MakeMaker)

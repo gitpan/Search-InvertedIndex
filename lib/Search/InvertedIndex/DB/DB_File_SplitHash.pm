@@ -162,6 +162,9 @@ sub new {
            croak (__PACKAGE__ . "::new() - $error_message\n");
     }
     $self->SUPER::set($parms->all_parms);
+    my $map_name = $self->SUPER::get('-map_name');
+    $self->map_name($map_name);
+
     $self->SUPER::set({ -fd => undef,
                -open_status => 0,
                 -filehandle => undef, 
@@ -171,6 +174,20 @@ sub new {
     $self;
 }
 
+
+###############################################################
+# Special accessor for '-map_name' because it is referenced 
+# so frequently.
+sub map_name {
+    my $self = shift;
+    my $package = __PACKAGE__;
+    if (@_ == 1) {
+        $self->{$package}->{-map_name} = shift;
+        return;
+    } else {
+        return $self->{$package}->{-map_name};
+    }
+}
 ###############################################################
 
 =over 4
@@ -191,7 +208,7 @@ sub open {
 #    use attrs qw(method);
     
     # Check if they have _already_ opened this map
-    my ($map) = $self->SUPER::get(-map_name);
+    my ($map) = $self->map_name;
     if ($map eq '') {
         croak (__PACKAGE__ . "::open() - Called without a -map_name specification\n");
     }
@@ -288,7 +305,7 @@ sub lock {
         my $error_message = Class::ParmList->error;
         croak (__PACKAGE__ . "::lock() - $error_message\n");
     }
-    my $map = $self->SUPER::get(-map_name);
+    my $map = $self->map_name;
     if (not defined $open_maps->{$map}) {
         croak (__PACKAGE__ . "::lock() - attempted to lock a map '$map' that was not open.\n");
     }
@@ -364,7 +381,7 @@ Closes the currently open -map_name and flushes all associated buffers.
 sub close {
     my ($self) = shift;
     $self->SUPER::set({ -open_status => 0 });
-    my ($map) = $self->SUPER::get(-map_name);
+    my ($map) = $self->map_name;
     return if (not defined $map);
     my $db_object = $open_maps->{$map};
     return if (not defined $db_object);
@@ -434,7 +451,7 @@ sub put {
     if (not defined $key) {
         croak (__PACKAGE__ . "::delete() - invalid passed -value. 'undef' not allowed as a value.\n");
     }
-    my ($map) = $self->SUPER::get(-map_name);
+    my ($map) = $self->map_name;
     my ($db_object) = $open_maps->{$map};
     my ($status) = $db_object->put($key,$value);
     if ($status) {
@@ -483,7 +500,7 @@ sub get {
         croak (__PACKAGE__ . "::get() - invalid passed -key. 'undef' not allowed as a key.\n");
     }
     my ($value);
-    my ($map) = $self->SUPER::get(-map_name);
+    my ($map) = $self->map_name;
     my ($db_object) = $open_maps->{$map};
     my ($status) = $db_object->get($key,$value);
     return undef if ($status);
@@ -527,7 +544,7 @@ sub delete {
     if (not defined $key) {
         croak (__PACKAGE__ . "::delete() - invalid passed -key value. 'undef' not allowed as a key.\n");
     }
-    my ($map) = $self->SUPER::get(-map_name);
+    my ($map) = $self->map_name;
     my ($db_object) = $open_maps->{$map};
     my ($status) = $db_object->del($key);
     return 0 if ($status);
@@ -570,7 +587,7 @@ sub exists {
     if (not defined $key) {
         croak (__PACKAGE__ . "::delete() - invalid passed -key value. 'undef' not allowed as a key.\n");
     }
-    my ($map) = $self->SUPER::get(-map_name);
+    my ($map) = $self->map_name;
     my ($db_object) = $open_maps->{$map};
     $db_object->exists($key);
 }
@@ -592,34 +609,29 @@ Completely clears the map database.
 sub clear {
     my ($self) = shift;
 
-    my ($map) = $self->SUPER::get(-map_name);
+    my ($map) = $self->map_name;
     my ($db_object) = $open_maps->{$map};
     $db_object->CLEAR;
 }
 
 ###############################################################
-
-=over 4
-
-=item C<_open_multi_map;>
-
-Internal method. Not for access outside of the module.
-
-Actually open the map for use using either DB_File or
-Tie::DB_File_SplitHash as appropriate.
-
-Example 1: $self->_open_multi_map;
-
-=back
-
-=cut
+# _open_multi_map;
+#
+#Internal method. Not for access outside of the module.
+#
+#Actually open the map for use using either DB_File or
+#Tie::DB_File_SplitHash as appropriate.
+#
+#Example 1: $self->_open_multi_map;
+#
 
 sub _open_multi_map {
     my ($self) = shift;
 
     # Open the map
-    my ($map,$cachesize,$file_mode,$lock_mode,$lock_timeout,$blocking_locks,
-        $multi,$write_through,$read_write_mode) = $self->SUPER::get(-map_name,-cachesize,-file_mode,
+    my $map = $self->map_name;
+    my ($cachesize,$file_mode,$lock_mode,$lock_timeout,$blocking_locks,
+        $multi,$write_through,$read_write_mode) = $self->SUPER::get(-cachesize,-file_mode,
         -lock_mode,-lock_timeout,-blocking_locks,-multi,-write_through,-read_write_mode);
 
     # Cache tuning is allowed

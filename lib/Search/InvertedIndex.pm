@@ -5,12 +5,12 @@ package Search::InvertedIndex;
 use strict;
 use Carp;
 use Class::NamedParms;
-use Class::ParmList;
+use Class::ParmList qw (simple_parms parse_parms);
 use Search::InvertedIndex::AutoLoader;
 use vars qw (@ISA $VERSION);
 
 @ISA     = qw(Class::NamedParms);
-$VERSION = '1.12';
+$VERSION = '1.13';
 
 # Used to catch attempts to open the same -map
 # to multiple objects simultaneously and to
@@ -21,6 +21,7 @@ my $open_maps = {};
 # DATABASE SECTIONING CONSTANTS.
 my $DATABASE_STRINGIFIER      = 'stringifier';
 my $DATABASE_VERSION          = 'database_version';
+my $DATABASE_FIX_LEVEL        = 'database_fix_level';
 
 my $INDEX                     = 'i_';
 my $INDEX_ENUM                = 'ie_';
@@ -42,95 +43,141 @@ my $UPDATE_SORTBLOCK_A        = '_c_';
 my $UPDATE_SORTBLOCK_B        = '_d_';
 my $UPDATE_GROUP_PREFIX_NAME  = '09a2184 xjkjeru 827i^131 mqwj;z';
 
+my $NULL_ENUM                 = '-' x 12;
+my $ZERO_ENUM                 = '0' x 12;
+
+####################################################################
+# _pack_list($hash_ref);
+#
+# Internal method. Not for access outside of the module.
+#
+# Packs the passed hash ref of enum keys and signed 16 bit int values
+# into a dense binary structure. There is an endian dependancy
+# here.
+#
+
+sub _pack_list {
+#	my ($hash_ref) = @_;
+
+	my @data_list = %{$_[0]};
+	return '' if (@data_list == 0);
+	my $list_length = int (@data_list / 2);
+	pack ("H12s" x $list_length,@data_list);
+}
+
+####################################################################
+# _unpack_list($packed_list);
+#
+# Internal method. Not for access outside of the module.
+#
+#Unpacks the passed dense binary structure into
+#an anonymous hash of enum keys and signed 16 bit int values.
+#There is an endian dependancy here.
+#
+
+sub _unpack_list {
+	my ($bin_pack) = @_;
+
+#	if (not defined $bin_pack) {
+#		croak (__PACKAGE__ . "::_unpack_list() - did not pass a binary structure for unpacking\n");
+#	}
+
+	my $list_length = length($bin_pack)/8;
+	my $hash_ref    = {};
+	return {} if ($list_length == 0);
+	%$hash_ref        = unpack("H12s" x $list_length,$bin_pack);
+	return $hash_ref;
+}
+
 =head1 NAME
 
 Search::InvertedIndex - A manager for inverted index maps
 
 =head1 SYNOPSIS
 
-  use Search::InvertedIndex;
+   use Search::InvertedIndex;
 
-  my $database = Search::InvertedIndex::DB::DB_File_SplitHash->new({
-             -map_name => '/www/search-engine/databases/test-maps/test',
-				-multi => 4,
-            -file_mode => 0644,
-            -lock_mode => 'EX',
-         -lock_timeout => 30,
-       -blocking_locks => 0,
-            -cachesize => 1000000,
-        -write_through => 0,
-      -read_write_mode => 'RDWR';
-        });
+   my $database = Search::InvertedIndex::DB::DB_File_SplitHash->new({
+			  -map_name => '/www/search-engine/databases/test-maps/test',
+				 -multi => 4,
+			 -file_mode => 0644,
+			 -lock_mode => 'EX',
+		  -lock_timeout => 30,
+		-blocking_locks => 0,
+			 -cachesize => 1000000,
+		 -write_through => 0,
+	   -read_write_mode => 'RDWR';
+		 });
 
-  my $inv_map = Search::Inverted->new({ -database => $database });
+   my $inv_map = Search::Inverted->new({ -database => $database });
 
-##########################################################
-# Example Update
-##########################################################
+ ##########################################################
+ # Example Update
+ ##########################################################
 
-  my $index_data = "Some scalar - complex structure refs are ok";
+   my $index_data = "Some scalar - complex structure refs are ok";
 
-  my $update = Search::InvertedIndex::Update->new({
-                               -group => 'keywords',
-                               -index => 'http://www.nihongo.org/',
-                                -data => $index_data,
-                                -keys => {
-                                            'some' => 10,
-                                          'scalar' => 20,
-                                         'complex' => 15,
-                                       'structure' => 15,
-                                            'refs' => 15,
-                                             'are' => 15,
-                                              'ok' => 15,
-                                         },
-                                         });
-  my $result = $inv_map->update({ -update => $update });
+   my $update = Search::InvertedIndex::Update->new({
+							    -group => 'keywords',
+							    -index => 'http://www.nihongo.org/',
+							     -data => $index_data,
+							     -keys => {
+							                 'some' => 10,
+							               'scalar' => 20,
+							              'complex' => 15,
+							            'structure' => 15,
+							                 'refs' => 15,
+							                  'are' => 15,
+							                   'ok' => 15,
+							              },
+							              });
+   my $result = $inv_map->update({ -update => $update });
 
-##########################################################
-# Example Query
-# '-nodes' is an anon list of Search::InvertedIndex::Query
-# objects (this allows constructing complex booleans by
-# nesting).
-#
-# '-leafs' is an anon list of Search::InvertedIndex::Query::Leaf
-# objects (used for individual search terms).
-#
-##########################################################
+ ##########################################################
+ # Example Query
+ # '-nodes' is an anon list of Search::InvertedIndex::Query
+ # objects (this allows constructing complex booleans by
+ # nesting).
+ #
+ # '-leafs' is an anon list of Search::InvertedIndex::Query::Leaf
+ # objects (used for individual search terms).
+ #
+ ##########################################################
 
-  my $query_leaf1 = Search::InvertedIndex::Query::Leaf->new({
-                                          -key => 'complex',
-                                        -group => 'keywords',
-                                       -weight => 1,
-                                       });
+   my $query_leaf1 = Search::InvertedIndex::Query::Leaf->new({
+							               -key => 'complex',
+							             -group => 'keywords',
+							            -weight => 1,
+							            });
 
-  my $query_leaf2 = Search::InvertedIndex::Query::Leaf->new({
-                                          -key => 'structure',
-                                        -group => 'keywords',
-                                       -weight => 1,
-                                       });
-  my $query_leaf3 = Search::InvertedIndex::Query::Leaf->new({
-                                          -key => 'gold',
-                                        -group => 'keywords',
-                                       -weight => 1,
-                                       });
-  my $query1 = Search::InvertedIndex::Query->new({
-                     -logic => 'and',
-                    -weight => 1,
-                     -nodes => [],
-                     -leafs => [$query_leaf1,$query_leaf2],
-                  });
-  my $query2 = Search::InvertedIndex::Query->new({
-                     -logic => 'or',
-                    -weight => 1,
-                     -nodes => [$query1],
-                     -leafs => [$query_leaf3],
-                  });
+   my $query_leaf2 = Search::InvertedIndex::Query::Leaf->new({
+							               -key => 'structure',
+							             -group => 'keywords',
+							            -weight => 1,
+							            });
+   my $query_leaf3 = Search::InvertedIndex::Query::Leaf->new({
+							               -key => 'gold',
+							             -group => 'keywords',
+							            -weight => 1,
+							            });
+   my $query1 = Search::InvertedIndex::Query->new({
+					  -logic => 'and',
+					 -weight => 1,
+					  -nodes => [],
+					  -leafs => [$query_leaf1,$query_leaf2],
+				   });
+   my $query2 = Search::InvertedIndex::Query->new({
+					  -logic => 'or',
+					 -weight => 1,
+					  -nodes => [$query1],
+					  -leafs => [$query_leaf3],
+				   });
 
-  my $result = $inv_map->search({ -query => $query2 });
+   my $result = $inv_map->search({ -query => $query2 });
 
-##########################################################
+ ##########################################################
 
-  $inv_map->close;
+   $inv_map->close;
 
 =head1 DESCRIPTION
 
@@ -153,10 +200,10 @@ determine initialization requirements.
  1.00 1999.06.16 - Initial release
 
  1.01 1999.06.17 - Documentation fixes and fix to 'close' method in
-                   Search::InvertedIndex::DB::DB_File_SplitHash
+				   Search::InvertedIndex::DB::DB_File_SplitHash
 
  1.02 1999.06.18 - Major bugfix to locking system.
-                   Performance tweaking. Roughly 3x improvement.
+				   Performance tweaking. Roughly 3x improvement.
 
  1.03 1999.06.30 - Documentation fixes.
 
@@ -169,24 +216,31 @@ determine initialization requirements.
  1.07 1999.11.09 - "Cosmetic" changes to avoid warnings in Perl 5.004
 
  1.08 2000.01.25 - Bugfix to 'Search::InvertedIndex::DB:DB_File_SplitHash' submodule
-                   and documentation additions/fixes
+				   and documentation additions/fixes
 
  1.09 2000.03.23 - Bugfix to 'Search::InvertedIndex::DB:DB_File_SplitHash' submodule
-                   to manage case where 'open' is not performed before close is called.
+				   to manage case where 'open' is not performed before close is called.
 
  1.10 2000.07.05 - Delayed loading of serializer and added option to select
-                   which serializer (Storable or Data::Dumper) to use at instance 'new' time.
-                   This should allow module to be loaded by mod_perl via the 'PerlModule'
-                   conf directive and enable use on platforms that do not support
-                   'Storable' (such as Macintosh).
+				   which serializer (Storable or Data::Dumper) to use at instance 'new' time.
+				   This should allow module to be loaded by mod_perl via the 'PerlModule'
+				   conf directive and enable use on platforms that do not support
+				   'Storable' (such as Macintosh).
 
  1.11 2000.11.29 - Added 'Search::InvertedIndex::DB::Mysql' (authored by
-                   Michael Cramer <cramer@webkist.com>) database driver
-                   to package.
+				   Michael Cramer <cramer@webkist.com>) database driver
+				   to package.
 
  1.12 2002.04.09 - Squashed bug in removal of an index from a group when the index doesn't
-                   exist in that group that caused index counts for the group to be decremented
-                   in error.
+				   exist in that group that caused index counts for the group to be decremented
+				   in error.
+
+ 1.13 2002.09.28 - Interim release. Fixed false error return from 'first_key_in_group' for a group
+                   that has not yet had any keys set.  Tightened calling
+                   parm parses. Tweaked performance of preload updating code.
+                   Added taint fix for stringifier identifier.
+                   This release was driven by the taint issue and code bug as crisis items.
+                   Hopefully a 1.14 release will be in the not too distant future.
 
 =head2 Public API
 
@@ -196,7 +250,7 @@ determine initialization requirements.
 
 =over 4
 
-=item C<new($parm_ref);>
+=item C<new({ -database =E<gt> $database_object [,'-search_cache_size' =E<gt> 1000, -search_cache_dir =E<gt> '/var/tmp/search_cache', -stringifier =E<gt> ['Storable','Data::Dumper'],  ] });>
 
 Provides the interface for obtaining a new Search::InvertedIndex
 object for manipulating a inverted database.
@@ -204,24 +258,40 @@ object for manipulating a inverted database.
 Example 1:
 
  my $database = Search::InvertedIndex::DB::DB_File_SplitHash->new({
-             -map_name =>
-			             '/www/search-engine/databases/test-map_names/test',
+			 -map_name => '/www/databases/test-map_names/test',
 				-multi => 4,
-            -file_mode => 0644,
-            -lock_mode => 'EX',
-         -lock_timeout => 30,
-       -blocking_locks => 0,
-            -cachesize => 1000000,
-        -write_through => 0,
-      -read_write_mode => 'RDONLY',
-          -stringifier => ['Storable','Data::Dumper'],
-        });
+			-file_mode => 0644,
+			-lock_mode => 'EX',
+		 -lock_timeout => 30,
+	   -blocking_locks => 0,
+			-cachesize => 1000000,
+		-write_through => 0,
+	  -read_write_mode => 'RDONLY',
+		});
 
  my $inv_map = Search::InvertedIndex->new({
-                '-database' => $database,
-       '-search_cache_size' => 1000,
-        '-search_cache_dir' => '/var/tmp/search_cache',
-     });
+				'-database' => $database,
+	   '-search_cache_size' => 1000,
+		'-search_cache_dir' => '/var/tmp/search_cache',
+			   -stringifier => ['Storable','Data::Dumper'],
+	 });
+
+
+Parameter explanations:
+
+  -database          - A database interface object. Defined database interfaces
+					   are currently Search::InvertedIndex::DB::DB_File_SplitHash
+					   and Search::InvertedIndex::DB::Mysql. (Required)
+
+  -stringifier       - Declares the stringifier used to store information in the
+					   underlaying database. Currently defined stringifiers are
+					   'Storable' and 'Data::Dumper'. The default is to use
+					   'Storable' with fallback to 'Data::Dumper'. (Optional)
+
+  -search_cache_size - Sets the number of cached searched to hold in the search cache (Optional)
+
+  -search_cache_dir  - Sets the directory to be used for the search cache
+					   (Required if search_cache_size is set to something other than 0)
 
 The -database parameter is required and must be a 'Search::InvertedIndex::DB::...'
 type database object. The other two parameters are optional and define the
@@ -241,49 +311,51 @@ it will automatically detect it and attempt to use the correct one.
 =cut
 
 sub new {
-	my $proto = shift;
-    my $class = ref ($proto) || $proto;
-	my $self  = Class::NamedParms->new(qw (-database -search_cache_dir -search_cache_size -thaw -freeze -stringifier));
+	my $proto   = shift;
+	my $package = __PACKAGE__;
+	my $class   = ref ($proto) || $proto || $package;
+	my $self    = Class::NamedParms->new(qw (-database  -thaw  -freeze  -stringifier));
 	bless $self,$class;
 
-   # Read any passed parms
-    my ($parm_ref) = {};
-    if ($#_ == 0) {
-        $parm_ref  = shift;
-    } elsif ($#_ > 0) {
-        %$parm_ref = @_;
-    }
-
 	# Check the passed parms and set defaults as necessary
-    my $parms = Class::ParmList->new({ -parms => $parm_ref,
-                                 -legal => ['-search_cache_size', '-search_cache_dir'],
-						      -required => ['-database'],
-                              -defaults => { -search_cache_size => 0,
-							                  -search_cache_dir => undef,
-                                                   -stringifier => [qw(Storable Data::Dumper)],
-										},
-   							});
-
-   	if (not defined $parms) {
-   	    my $error_message = Class::ParmList->error;
-   	    croak (__PACKAGE__ . "::new() - $error_message\n");
+	my $parms = parse_parms({ -parms => \@_,
+							  -legal => ['-search_cache_size', '-search_cache_dir'],
+						   -required => ['-database'],
+						   -defaults => { -search_cache_size => 0,
+							               -search_cache_dir => undef,
+							                    -stringifier => [qw(Storable Data::Dumper)],
+							            },
+							   });
+	   if (not defined $parms) {
+		   my $error_message = Class::ParmList->error;
+		   croak (__PACKAGE__ . "::new() - $error_message\n");
 	}
 
 	my ($database,$search_cache_dir,$search_cache_size,$stringifier) =
 			$parms->get(qw (-database -search_cache_dir -search_cache_size -stringifier));
 
-    $stringifier = [$stringifier] if ('ARRAY' ne ref($stringifier));
+	$stringifier = [$stringifier] if ('ARRAY' ne ref($stringifier));
 
-    $self->set({ -database => $database,
-         -search_cache_dir => $search_cache_dir,
-        -search_cache_size => $search_cache_size,
-			 });
+    $self->search_cache_dir($search_cache_dir);
+    $self->search_cache_size($search_cache_size);
+	$self->set({ -database => $database, });
 
 	$database->open;
+	$self->_select_stringifier(@$stringifier);
 
-    $self->_select_stringifier(@$stringifier);
+#    # auto-fix corrupted group key/index counters
+#	my $database_fix_level = $database->get({ -key => $DATABASE_FIX_LEVEL});
+#    $database_fix_level    = 0 unless ((defined $database_fix_level) and ($database_fix_level ne ''));
+#    my $database_lock_mode = $database->status('-lock_mode');
+#    if (($database_lock_mode eq 'EX') and ($database_fix_level < '2')) {
+#        if ($database->put({ -key => $DATABASE_FIX_LEVEL, -value => '1' })) {
+#            # OK. We are opened EX and writable. Time to fix things
+#            require Search::InvertedIndex::FixGroups;
+#            # Code here XXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+#        }
+#    }
 
-	$self;
+	return $self;
 }
 
 #####################################################################
@@ -294,68 +366,85 @@ sub new {
 #
 
 sub _select_stringifier {
-    my $self = shift;
+	my $self = shift;
 
-    my @stringifier = @_;
+	my @stringifier = @_;
 
 	my $db    = $self->get(-database);
 
-    # We use whatever the *database* may already have used in preference
-    # to any requests for a stringifier. This will prevent wierdness like the database
-    # breaking because 'Storable' was installed after it was created
-    # using 'Data::Dumper'.This is backward compatible with old databases
-    # created with this because old database defaulted to 'Storable'
-    my $declared_stringifier = $db->get({ -key => $DATABASE_STRINGIFIER });
-    if (defined $declared_stringifier) {
-        @stringifier = ($declared_stringifier);
-    }
+	# We use whatever the *database* may already have used in preference
+	# to any requests for a stringifier. This will prevent wierdness like the database
+	# breaking because 'Storable' was installed after it was created
+	# using 'Data::Dumper'.This is backward compatible with old databases
+	# created with this because old database defaulted to 'Storable'
+	my $declared_stringifier = $db->get({ -key => $DATABASE_STRINGIFIER });
+	if (defined $declared_stringifier) {
+		@stringifier = ($declared_stringifier);
+	}
 
-    # We delay the load of stringification modules to here to make it
-    # compatible with PerlModule for mod_perl and to allow a choice
-    # of stringification modules
-    my $have_stringifier;
-    foreach my $module_name (@stringifier) {
-        eval "use $module_name;";
-        next if ($@);
-        $have_stringifier = $module_name;
-        last;
-    }
-    if (not defined $have_stringifier) {
-            croak('[' . localtime(time) . "] [error] " . __PACKAGE__ .
-                "::_select_stringifier() - Unable to load stringification modules. Tried: " . join (' ',@stringifier));
-    }
-    my ($thaw,$freeze);
-    if ($have_stringifier eq 'Storable') {
-        $thaw   = \&Storable::thaw;
-        $freeze = \&Storable::nfreeze;
-    } elsif ($have_stringifier eq 'Data::Dumper') {
-        my $dumper = Data::Dumper->new(['blecherous']);
-        $thaw   = sub { my $value = shift; local $^W; no strict 'vars'; my $thawed = eval $value; return $thawed; };
-        if ($dumper->can('Dumpxs')) {
-            $freeze = sub { my $value = shift; local $Data::Dumper::Purity = 1; local $Data::Dumper::Indent = 0; my $frozen = Data::Dumper::DumperX($value); return $frozen; };
-        } else {
-            $freeze = sub { my $value = shift; local $Data::Dumper::Purity = 1; local $Data::Dumper::Indent = 0; my $frozen = Data::Dumper::Dumper($value); return $frozen; };
+	# We delay the load of stringification modules to here to make it
+	# compatible with PerlModule for mod_perl and to allow a choice
+	# of stringification modules
+	my $have_stringifier;
+	foreach my $module_name (@stringifier) {
+		if ($module_name !~ m/^(Storable|Data::Dumper)$/) {
+			croak ('[' . localtime(time) . "] [error] " . __PACKAGE__ .
+				"::_select_stringifier() - Stringifier of '$module_name' is not supported.");
+		}
+        my $untainted_module_name = $1;
+		eval "use $untainted_module_name;";
+		next if ($@);
+		$have_stringifier = $untainted_module_name;
+		last;
+	}
+	if (not defined $have_stringifier) {
+			croak('[' . localtime(time) . "] [error] " . __PACKAGE__ .
+				"::_select_stringifier() - Unable to load stringification modules. Tried: " . join (' ',@stringifier));
+	}
+	my ($thaw,$freeze);
+	if ($have_stringifier eq 'Storable') {
+		$thaw   = \&Storable::thaw;
+		$freeze = \&Storable::nfreeze;
+	} elsif ($have_stringifier eq 'Data::Dumper') {
+		my $dumper = Data::Dumper->new(['blecherous']);
+		$thaw   = sub { my $value = shift;
+						local $^W;
+						no strict 'vars';
+						my $thawed = eval $value;
+						return $thawed; };
+		if ($dumper->can('Dumpxs')) {
+			$freeze = sub { my $value = shift;
+							local $Data::Dumper::Purity = 1;
+							local $Data::Dumper::Indent = 0;
+							my $frozen = Data::Dumper::DumperX($value);
+							return $frozen; };
+		} else {
+			$freeze = sub { my $value = shift;
+							local $Data::Dumper::Purity = 1;
+							local $Data::Dumper::Indent = 0;
+							my $frozen = Data::Dumper::Dumper($value);
+							return $frozen; };
 
-        }
-    } else {
-            croak('[' . localtime(time) . "] [error] " . __PACKAGE__ .
-                "::_select_stringifier() - Unsupported stringification module ($have_stringifier)");
+		}
+	} else {
+			croak('[' . localtime(time) . "] [error] " . __PACKAGE__ .
+				"::_select_stringifier() - Unsupported stringification module ($have_stringifier)");
 
-    }
+	}
 
-    # This may well fail if the database was opened read only. We don't care if it does.
-    # A silent failure is *ok*.
-    if ((not defined $declared_stringifier) and ('EX' eq $db->status('-lock_mode'))) {
-        $db->put({ -key => $DATABASE_STRINGIFIER, -value => $have_stringifier });
-        my $database_version = $db->get({ -key => $DATABASE_VERSION });
-        if (not defined $database_version) {
-            $db->put({ -key => $DATABASE_VERSION, -value => $VERSION });
-        }
-    }
+	# This may well fail if the database was opened read only. We don't care if it does.
+	# A silent failure is *ok*.
+	if ((not defined $declared_stringifier) and ('EX' eq $db->status('-lock_mode'))) {
+		$db->put({ -key => $DATABASE_STRINGIFIER, -value => $have_stringifier });
+		my $database_version = $db->get({ -key => $DATABASE_VERSION });
+		if (not defined $database_version) {
+			$db->put({ -key => $DATABASE_VERSION, -value => $VERSION });
+		}
+	}
 
-    $self->set({
-                     -thaw => $thaw,
-                   -freeze => $freeze,
+	$self->set({
+					 -thaw => $thaw,
+				   -freeze => $freeze,
 			 });
 }
 
@@ -363,7 +452,7 @@ sub _select_stringifier {
 
 =over 4
 
-=item C<lock($parm_ref);>
+=item C<lock({ -lock_mode => 'EX|SH|UN' [, -lock_timeout => 30] [, -blocking_locks => 0] });>
 
 Changes a lock on the underlaying database.
 
@@ -372,8 +461,8 @@ Forces 'sync' if the stat is changed from 'EX' to a lower lock state
 
 Example:
 
-    $inv->lock({ -lock_mode => 'EX' [, -lock_timeout => 30] [, -blocking_locks => 0],
-          });
+	$inv->lock({ -lock_mode => 'EX' [, -lock_timeout => 30] [, -blocking_locks => 0],
+		  });
 
 The only _required_ parameter is the -lock_mode. The other
 parameters can be inherited from the object state. If the
@@ -386,9 +475,6 @@ to match the new settings.
 
 sub lock {
 	my $self = shift;
-
-	my ($parm_ref) = @_;
-
 	my ($db) = $self->get(-database);
 	if (not $db) {
 		croak (__PACKAGE__ . "::lock() - No database opened for use\n");
@@ -400,7 +486,7 @@ sub lock {
 
 =over 4
 
-=item C<status($parm_ref);>
+=item C<status(-open|-lock_mode);>
 
 Returns the requested status line for the database. Allowed requests
 are '-open', and '-lock'.
@@ -417,9 +503,6 @@ Example 2:
 
 sub status {
 	my $self = shift;
-
-	my ($parm_ref) = @_;
-
 	my ($db) = $self->get(-database);
 	if (not $db) {
 		croak (__PACKAGE__ . "::status() - No database opened for use\n");
@@ -431,7 +514,7 @@ sub status {
 
 =over 4
 
-=item C<update($parm_ref);>
+=item C<update({ -update =E<gt> $update });>
 
 Performs an update on the map. This is designed for
 adding/changing/deleting a bunch of related information
@@ -465,20 +548,7 @@ optimizations when there is more than one key.
 sub update {
 	my $self = shift;
 
-    my ($parm_ref) = {};
-    if ($#_ == 0) {
-        $parm_ref  = shift;
-    } elsif ($#_ > 0) {
-        %$parm_ref = @_;
-    }
-	my $parms = Class::ParmList->new ({ -parms => $parm_ref,
-                                     -required => ['-update'],
-                                    });
-    if (not defined $parms) {
-    	my $error_message = Class::ParmList->error;
-		croak (__PACKAGE__ . "::update() - $error_message\n");
-    }
-	my ($update) = $parms->get(-update);
+	my ($update) = simple_parms(['-update'],@_);
 	my ($db)     = $self->get(-database);
 	if (not $db) {
 		croak (__PACKAGE__ . "::update() - No database opened for use\n");
@@ -532,24 +602,24 @@ sub update {
 
 		# Add the ranking to the running key_enum indexed record
 		$indexed_keys->{$key_enum} = $ranking;
-	
+
 		# Add the index_enum to the list of index_enums for this key_enum
 		my $keyed_record  = $db->get({ -key => "$GROUP_ENUM_DATA$group_enum$KEYED_INDEX_LIST$key_enum" });
 		$keyed_record = '' if (not defined $keyed_record);
-		my $keyed_indexes = $self->_unpack_list($keyed_record);
+		my $keyed_indexes = _unpack_list($keyed_record);
 		$keyed_indexes->{$index_enum} = $ranking;
-		$keyed_record = $self->_pack_list($keyed_indexes);
+		$keyed_record = _pack_list($keyed_indexes);
 		if (not $db->put({ -key => "$GROUP_ENUM_DATA${group_enum}$KEYED_INDEX_LIST$key_enum", -value => $keyed_record })) {
 			croak (__PACKAGE__ . "::update() - Failed to save updated '$GROUP_ENUM_DATA${group_enum}$KEYED_INDEX_LIST$key_enum' -> (list of ranked indexes)\n");
 		}
 	}
-	
+
 	# increment the _number_of_indexes counter and create
 	# a new INDEXED_KEY_LIST for this index_enum if we
 	# assigned new keys for this group for the index
 	# This is where we gain a big chunk of our performance advantage from.
 	if ($new_keys) {
-		my $indexed_record = $self->_pack_list($indexed_keys);	
+		my $indexed_record = _pack_list($indexed_keys);
 		my $number_of_group_indexes = $db->get({ -key => "$GROUP_ENUM_DATA${group_enum}_number_of_indexes" });
 		if (not defined $number_of_group_indexes) {
 			croak (__PACKAGE__ . "::update () - Database may be corrupt. Failed to locate '$GROUP_ENUM_DATA${group_enum}_number_of_indexes' record for group '$group'\n");
@@ -564,24 +634,23 @@ sub update {
 	}
 
 	# Update the INDEX_ENUM_GROUP_CHAIN as necessary
-	my ($null_enum)         = '-' x 12;
 	# Check if the index already exists in the group
 	my ($chain) = $db->get({ -key => "$GROUP_ENUM_DATA$group_enum$INDEX_ENUM_GROUP_CHAIN$index_enum" });
 	if (not defined $chain) {
-	    # Add the index_enum to the index chain for the group
+		# Add the index_enum to the index chain for the group
 		my $old_first_index_enum = $db->get({ -key => "$GROUP_ENUM_DATA${group_enum}_first_index_enum" });
-		my $first_index_enum_record = "$null_enum $null_enum";
-		if (defined ($old_first_index_enum) and ($old_first_index_enum ne $null_enum)) { # Record formated as: prev next index
+		my $first_index_enum_record = "$NULL_ENUM $NULL_ENUM";
+		if (defined ($old_first_index_enum) and ($old_first_index_enum ne $NULL_ENUM)) { # Record formated as: prev next index
 			my $old_first_index_enum_record = $db->get({ -key => "$GROUP_ENUM_DATA${group_enum}$INDEX_ENUM_GROUP_CHAIN$old_first_index_enum" });
 			if (not defined $old_first_index_enum_record) {
 				croak (__PACKAGE__ . "::update() - Unable to read '$GROUP_ENUM_DATA${group_enum}$INDEX_ENUM_GROUP_CHAIN$old_first_index_enum' record. Database may be corrupt.\n");
 			}
-			$old_first_index_enum_record =~ s/^$null_enum/$index_enum/;
+			$old_first_index_enum_record =~ s/^$NULL_ENUM/$index_enum/;
 			if (not $db->put({ -key => "$GROUP_ENUM_DATA$group_enum$INDEX_ENUM_GROUP_CHAIN$old_first_index_enum",
-			                 -value => $old_first_index_enum_record, })) {
+							 -value => $old_first_index_enum_record, })) {
 				croak (__PACKAGE__ . "::update() - Unable to update 'prev' enum reference for '$GROUP_ENUM_DATA$group_enum$INDEX_ENUM_GROUP_CHAIN$old_first_index_enum'\n");
 			}
-		    $first_index_enum_record = "$null_enum $old_first_index_enum";
+			$first_index_enum_record = "$NULL_ENUM $old_first_index_enum";
 		}
 		if (not $db->put({ -key => "$GROUP_ENUM_DATA$group_enum$INDEX_ENUM_GROUP_CHAIN$index_enum", -value => $first_index_enum_record })) {
 			croak (__PACKAGE__ . "::update() - Unable to save '$GROUP_ENUM_DATA$group_enum$INDEX_ENUM_GROUP_CHAIN$index_enum' -> '$first_index_enum_record' to map\n");
@@ -599,7 +668,7 @@ sub update {
 
 =over 4
 
-=item C<preload_update($parm_ref);>
+=item C<preload_update({ -update =E<gt> $update });>
 
 'preload_update' places the passed 'update' object data into a pending
 queue which is not reflected in the searchable database until the
@@ -618,7 +687,7 @@ Example:
 
  my $update = Search::InvertedIndex::Update->new(...);
  $inv_map->preload_update({ -update => $update });
-        .
+		.
 		.
 		.
  $inv_map->update_group({ -group => 'test' });
@@ -630,20 +699,7 @@ Example:
 sub preload_update {
 	my $self = shift;
 
-    my ($parm_ref) = {};
-    if ($#_ == 0) {
-        $parm_ref  = shift;
-    } elsif ($#_ > 0) {
-        %$parm_ref = @_;
-    }
-	my $parms = Class::ParmList->new ({ -parms => $parm_ref,
-                                     -required => ['-update'],
-                                    });
-    if (not defined $parms) {
-    	my $error_message = Class::ParmList->error;
-		croak (__PACKAGE__ . "::preload_update() - $error_message\n");
-    }
-	my ($update)     = $parms->get(qw(-update));
+	my ($update)     = simple_parms(['-update'],@_);
 	my ($db,$freeze) = $self->get(qw(-database -freeze));
 	if (not $db) {
 		croak (__PACKAGE__ . "::preload_update() - No database opened for use\n");
@@ -674,16 +730,16 @@ sub preload_update {
 	# Increment the update record counter
 	my $update_counter = $db->get({ -key => "$PRELOAD_GROUP_ENUM_DATA$group_enum$UPDATE_GROUP_COUNTER" });
 	if (not defined $update_counter) {
-		$update_counter = '0' x 12;
+		$update_counter = $ZERO_ENUM;
 	}
 	$update_counter = $self->_increment_enum($update_counter);
 	if (not defined $db->put({ -key => "$PRELOAD_GROUP_ENUM_DATA$group_enum$UPDATE_GROUP_COUNTER",
-                             -value => "$update_counter" })) {
+							 -value => "$update_counter" })) {
 		croak(__PACKAGE__ . "::preload_update() - Failed to save incremented UPDATE_GROUP_COUNTER for group '$group'\n");
 	}
 	my $update_record = &$freeze($update);
 	if (not defined $db->put({ -key => "$PRELOAD_GROUP_ENUM_DATA$group_enum$UPDATE_DATA$update_counter",
-                             -value => $update_record })) {
+							 -value => $update_record })) {
 		croak(__PACKAGE__ . "::preload_update() - Failed to save preloaded Update record for group '$group'\n");
 
 	}
@@ -693,7 +749,7 @@ sub preload_update {
 
 =over 4
 
-=item C<clear_preload_update_for_group($parm_ref);>
+=item C<clear_preload_update_for_group({ -group =E<gt> $group });>
 
 This clears all the data from the preload area for the specified
 group.
@@ -705,24 +761,11 @@ group.
 sub clear_preload_update_for_group {
 	my $self = shift;
 
-    my ($parm_ref) = {};
-    if ($#_ == 0) {
-        $parm_ref  = shift;
-    } elsif ($#_ > 0) {
-        %$parm_ref = @_;
-    }
-	my $parms = Class::ParmList->new ({ -parms => $parm_ref,
-                                     -required => ['-group'],
-                                    });
-    if (not defined $parms) {
-    	my $error_message = Class::ParmList->error;
-		croak (__PACKAGE__ . "::clear_preload_update_for_group() - $error_message\n");
-    }
-	my ($db)     = $self->get(-database);
+	my ($group) = simple_parms(['-group'],@_);
+	my ($db)    = $self->get(-database);
 	if (not $db) {
 		croak (__PACKAGE__ . "::clear_preload_update_for_group() - No database opened for use\n");
 	}
-	my ($group) = $parms->get(-group);
 	if ((not defined $group) or ($group eq '')) {
 		croak (__PACKAGE__ . "::clear_preload_update_for_group() - No -group set.\n");
 	}
@@ -737,17 +780,16 @@ sub clear_preload_update_for_group {
 	if (not defined $update_counter) {
 		return 1;
 	}
-   	my $null_enum = '-' x 12;
-	my $counter   = '0' x 12;
+	my $counter   = $ZERO_ENUM;
 	while ($counter lt $update_counter) {
 		$counter = $self->_increment_enum($counter);
 		if (not $db->delete({ -key => "$PRELOAD_GROUP_ENUM_DATA$original_group_enum$UPDATE_DATA$counter" })) {
-			croak(__PACKAGE__ . "::clear_preload_update_for_group() - Failed to delete record '$PRELOAD_GROUP_ENUM_DATA$original_group_enum$UPDATE_DATA$counter'\n");	
+			croak(__PACKAGE__ . "::clear_preload_update_for_group() - Failed to delete record '$PRELOAD_GROUP_ENUM_DATA$original_group_enum$UPDATE_DATA$counter'\n");
 		}
 	}
-	
+
 	if (not $db->delete({ -key => "$PRELOAD_GROUP_ENUM_DATA$original_group_enum$UPDATE_GROUP_COUNTER" })) {
-			croak(__PACKAGE__ . "::clear_preload_update_for_group() - Failed to delete record '$PRELOAD_GROUP_ENUM_DATA$original_group_enum$UPDATE_GROUP_COUNTER'\n");	
+			croak(__PACKAGE__ . "::clear_preload_update_for_group() - Failed to delete record '$PRELOAD_GROUP_ENUM_DATA$original_group_enum$UPDATE_GROUP_COUNTER'\n");
 	}
 
 	1;
@@ -757,7 +799,7 @@ sub clear_preload_update_for_group {
 
 =over 4
 
-=item C<update_group($parm_ref);>
+=item C<update_group({ -group =E<gt> $group[, -block_size =E<gt> 65536] });>
 
 This clears the specifed group and loads all
 preloaded data (updates batch loaded through
@@ -795,21 +837,16 @@ completion of the mass update on the 'offline' database.
 
 sub update_group {
 	my $self = shift;
-    my ($parm_ref) = {};
-    if ($#_ == 0) {
-        $parm_ref  = shift;
-    } elsif ($#_ > 0) {
-        %$parm_ref = @_;
-    }
-	my $parms = Class::ParmList->new ({ -parms => $parm_ref,
-                                        -legal => ['-block_size'],
-                                     -required => ['-group'],
-                                     -defaults => { -block_size => 65536 },
-                                    });
-    if (not defined $parms) {
-    	my $error_message = Class::ParmList->error;
+
+	my $parms = parse_parms ({ -parms => \@_,
+							   -legal => ['-block_size'],
+							-required => ['-group'],
+							-defaults => { -block_size => 65536 },
+						   });
+	if (not defined $parms) {
+		my $error_message = Class::ParmList->error;
 		croak (__PACKAGE__ . "::update_group() - $error_message\n");
-    }
+	}
 	my ($db,$thaw) = $self->get('-database','-thaw');
 	if (not $db) {
 		croak (__PACKAGE__ . "::update_group() - No database opened for use\n");
@@ -841,8 +878,7 @@ sub update_group {
 		croak(__PACKAGE__ . "::update_group() - Failed to create -group '$original_group' update group\n");
 	}
 	my $update_counter = $db->get({ -key => "$PRELOAD_GROUP_ENUM_DATA$original_group_enum$UPDATE_GROUP_COUNTER" });
-   	my $null_enum             = '-' x 12;
-	my $counter               = '0' x 12;
+	my $counter               = $ZERO_ENUM;
 	$update_counter           = $counter if (not defined $update_counter);
 	my $block_element_counter = 0;
 	my $block_data            = [];
@@ -852,35 +888,35 @@ sub update_group {
 		$counter = $self->_increment_enum($counter);
 		my $update_record = $db->get({ -key => "$PRELOAD_GROUP_ENUM_DATA$original_group_enum$UPDATE_DATA$counter" });
 		my $update = &$thaw($update_record);
-    	my ($index,$index_data,$alleged_group,$key_list) = $update->get(qw(-index -data -group -keys));
-    	if (not defined $key_list) {
-    		$key_list = {};
-    	}
+		my ($index,$index_data,$alleged_group,$key_list) = $update->get(qw(-index -data -group -keys));
+		if (not defined $key_list) {
+			$key_list = {};
+		}
 
-    	# Create the -index and store the -data record for the -index as needed
-    	my $index_enum;
-    	if (defined $index_data) {
-    		$index_enum = $self->add_index({ '-index' => $index, -data => $index_data });
-    	} else {
-    		$index_enum = $db->get({ -key => "$INDEX$index" });
-    		if (not defined $index_enum) {
-    			croak(__PACKAGE__ . "::update_group() - Attempted to add a new index to the system without setting its -data\n");
-    		}
-    	}
+		# Create the -index and store the -data record for the -index as needed
+		my $index_enum;
+		if (defined $index_data) {
+			$index_enum = $self->add_index({ '-index' => $index, -data => $index_data });
+		} else {
+			$index_enum = $db->get({ -key => "$INDEX$index" });
+			if (not defined $index_enum) {
+				croak(__PACKAGE__ . "::update_group() - Attempted to add a new index to the system without setting its -data\n");
+			}
+		}
 
 		# Add the -index to the update group
 		$self->add_index_to_group({ -group => $group, '-index' => $index });
 
-    	my $new_keys = 0;
-    	my $indexed_keys = {};
-    	while (my ($key,$ranking) = each %$key_list) {
+		my $new_keys = 0;
+		my $indexed_keys = {};
+		while (my ($key,$ranking) = each %$key_list) {
 			$new_keys++;
 
-    		# Add the key to the group, if necessary.
-    		my $key_enum = $self->add_key_to_group ({ -group => $group, -key => $key });
+			# Add the key to the group, if necessary.
+			my $key_enum = $self->add_key_to_group ({ -group => $group, -key => $key, -database => $db });
 
-    		# Add the ranking to the running key_enum indexed record
-    		$indexed_keys->{$key_enum} = $ranking;
+			# Add the ranking to the running key_enum indexed record
+			$indexed_keys->{$key_enum} = $ranking;
 
 			# Save a record for key sorting
 			if ($ranking < 0) {
@@ -898,48 +934,48 @@ sub update_group {
 				$block_data            = [];
 				$block_counter++;
 				if (not $db->put({ -key => $update_sort_key, -value => $update_sort_value })) {
-    				croak(__PACKAGE__ . "::update_group() - Failed to save UPDATE_SORTBLOCK_A record '$update_sort_key': size of record " . length($update_sort_value)." $!\n");
+					croak(__PACKAGE__ . "::update_group() - Failed to save UPDATE_SORTBLOCK_A record '$update_sort_key': size of record " . length($update_sort_value)." $!\n");
 				}
 			}
-    	}
-		
-    	# Create a new INDEXED_KEY_LIST for this index_enum if we
-    	# assigned new keys for this group for the index
-    	# This is where we gain a big chunk of our performance advantage from.
-    	if ($new_keys) {
-    		my $indexed_record = $self->_pack_list($indexed_keys);	
-    		if (not $db->put({ -key => "$GROUP_ENUM_DATA${group_enum}$INDEXED_KEY_LIST$index_enum",
-			                 -value => $indexed_record })) {
-    			croak (__PACKAGE__ . "::update_group() - Failed to save updated '$GROUP_ENUM_DATA${group_enum}$INDEXED_KEY_LIST$index_enum' -> (list of ranked keys)\n");
-    		}
-    	}
+		}
 
-    	# Update the INDEX_ENUM_GROUP_CHAIN as necessary
-    	# Check if the index already exists in the group
-    	my ($chain) = $db->get({ -key => "$GROUP_ENUM_DATA$group_enum$INDEX_ENUM_GROUP_CHAIN$index_enum" });
-    	if (not defined $chain) {
-    	    # Add the index_enum to the index chain for the group
-    		my $old_first_index_enum = $db->get({ -key => "$GROUP_ENUM_DATA${group_enum}_first_index_enum" });
-    		my $first_index_enum_record = "$null_enum $null_enum";
-    		if (defined ($old_first_index_enum) and ($old_first_index_enum ne $null_enum)) { # Record formated as: prev next index
-    			my $old_first_index_enum_record = $db->get({ -key => "$GROUP_ENUM_DATA${group_enum}$INDEX_ENUM_GROUP_CHAIN$old_first_index_enum" });
-    			if (not defined $old_first_index_enum_record) {
-    				croak (__PACKAGE__ . "::update_group() - Unable to read '$GROUP_ENUM_DATA${group_enum}$INDEX_ENUM_GROUP_CHAIN$old_first_index_enum' record. Database may be corrupt.\n");
-    			}
-    			$old_first_index_enum_record =~ s/^$null_enum/$index_enum/;
-    			if (not $db->put({ -key => "$GROUP_ENUM_DATA$group_enum$INDEX_ENUM_GROUP_CHAIN$old_first_index_enum",
-    			                 -value => $old_first_index_enum_record, })) {
-    				croak (__PACKAGE__ . "::update_group() - Unable to update 'prev' enum reference for '$GROUP_ENUM_DATA$group_enum$INDEX_ENUM_GROUP_CHAIN$old_first_index_enum'\n");
-    			}
-    		    $first_index_enum_record = "$null_enum $old_first_index_enum";
-    		}
-    		if (not $db->put({ -key => "$GROUP_ENUM_DATA$group_enum$INDEX_ENUM_GROUP_CHAIN$index_enum", -value => $first_index_enum_record })) {
-    			croak (__PACKAGE__ . "::update_group() - Unable to save '$GROUP_ENUM_DATA$group_enum$INDEX_ENUM_GROUP_CHAIN$index_enum' -> '$first_index_enum_record' to map\n");
-    		}
-    		if (not $db->put({ -key => "$GROUP_ENUM_DATA${group_enum}_first_index_enum", -value => $index_enum })) {
-    			croak (__PACKAGE__ . "::update_group() - Unable to save '$GROUP_ENUM_DATA${group_enum}_first_index_enum' -> '$index_enum' map entry.\n");
-    		}
-    	}
+		# Create a new INDEXED_KEY_LIST for this index_enum if we
+		# assigned new keys for this group for the index
+		# This is where we gain a big chunk of our performance advantage from.
+		if ($new_keys) {
+			my $indexed_record = _pack_list($indexed_keys);
+			if (not $db->put({ -key => "$GROUP_ENUM_DATA${group_enum}$INDEXED_KEY_LIST$index_enum",
+							 -value => $indexed_record })) {
+				croak (__PACKAGE__ . "::update_group() - Failed to save updated '$GROUP_ENUM_DATA${group_enum}$INDEXED_KEY_LIST$index_enum' -> (list of ranked keys)\n");
+			}
+		}
+
+		# Update the INDEX_ENUM_GROUP_CHAIN as necessary
+		# Check if the index already exists in the group
+		my ($chain) = $db->get({ -key => "$GROUP_ENUM_DATA$group_enum$INDEX_ENUM_GROUP_CHAIN$index_enum" });
+		if (not defined $chain) {
+			# Add the index_enum to the index chain for the group
+			my $old_first_index_enum = $db->get({ -key => "$GROUP_ENUM_DATA${group_enum}_first_index_enum" });
+			my $first_index_enum_record = "$NULL_ENUM $NULL_ENUM";
+			if (defined ($old_first_index_enum) and ($old_first_index_enum ne $NULL_ENUM)) { # Record formated as: prev next index
+				my $old_first_index_enum_record = $db->get({ -key => "$GROUP_ENUM_DATA${group_enum}$INDEX_ENUM_GROUP_CHAIN$old_first_index_enum" });
+				if (not defined $old_first_index_enum_record) {
+					croak (__PACKAGE__ . "::update_group() - Unable to read '$GROUP_ENUM_DATA${group_enum}$INDEX_ENUM_GROUP_CHAIN$old_first_index_enum' record. Database may be corrupt.\n");
+				}
+				$old_first_index_enum_record =~ s/^$NULL_ENUM/$index_enum/;
+				if (not $db->put({ -key => "$GROUP_ENUM_DATA$group_enum$INDEX_ENUM_GROUP_CHAIN$old_first_index_enum",
+							     -value => $old_first_index_enum_record, })) {
+					croak (__PACKAGE__ . "::update_group() - Unable to update 'prev' enum reference for '$GROUP_ENUM_DATA$group_enum$INDEX_ENUM_GROUP_CHAIN$old_first_index_enum'\n");
+				}
+				$first_index_enum_record = "$NULL_ENUM $old_first_index_enum";
+			}
+			if (not $db->put({ -key => "$GROUP_ENUM_DATA$group_enum$INDEX_ENUM_GROUP_CHAIN$index_enum", -value => $first_index_enum_record })) {
+				croak (__PACKAGE__ . "::update_group() - Unable to save '$GROUP_ENUM_DATA$group_enum$INDEX_ENUM_GROUP_CHAIN$index_enum' -> '$first_index_enum_record' to map\n");
+			}
+			if (not $db->put({ -key => "$GROUP_ENUM_DATA${group_enum}_first_index_enum", -value => $index_enum })) {
+				croak (__PACKAGE__ . "::update_group() - Unable to save '$GROUP_ENUM_DATA${group_enum}_first_index_enum' -> '$index_enum' map entry.\n");
+			}
+		}
 	}
 
 	# Flush any dangling sort data to a record
@@ -950,7 +986,7 @@ sub update_group {
 		$block_element_counter = 0;
 		$block_counter++;
 		if (not $db->put({ -key => $update_sort_key, -value => $update_sort_value })) {
-   			croak(__PACKAGE__ . "::update_group() - Failed to save UPDATE_SORTBLOCK_A record '$update_sort_key'\n");
+			   croak(__PACKAGE__ . "::update_group() - Failed to save UPDATE_SORTBLOCK_A record '$update_sort_key'\n");
 		}
 	}
 
@@ -994,7 +1030,7 @@ sub update_group {
 						if (($block_offset[$half] < $block_chunk) and ($running_block_pointer[$half] < $block_counter)) {
 							$block_data[$half] = $db->get({ -key => "$PRELOAD_GROUP_ENUM_DATA$group_enum$source_blocks$running_block_pointer[$half]" });
 							$block_data_length[$half] = length ($block_data[$half]);
-						    $running_record_pointer[$half] = 0;
+							$running_record_pointer[$half] = 0;
 						} else { # out of data for this half
 							$block_data[$half]        = undef;
 							$block_data_length[$half] = 0;
@@ -1010,7 +1046,7 @@ sub update_group {
 
 				if ($target_record_offset == 0) {
 					$target_size = ($block_data_length[0] - $running_record_pointer[0]) +
-                    	              ($block_data_length[1] - $running_record_pointer[1]);
+							          ($block_data_length[1] - $running_record_pointer[1]);
 					$target_size = $max_block_bytes if ($target_size > $max_block_bytes);
 					$target_data = ' ' x $target_size;
 				}
@@ -1020,7 +1056,7 @@ sub update_group {
 				# to use the built in sort over the item by item merge?
 				# It it worth the substantial memory trade-off?
 				while (($running_record_pointer[0] < $block_data_length[0]) and
-				       ($running_record_pointer[1] < $block_data_length[1])) {
+					   ($running_record_pointer[1] < $block_data_length[1])) {
 					$match_data[0] = ($block_data_length[0] and ($block_data_length[0] > $running_record_pointer[0])) ? substr($block_data[0],$running_record_pointer[0],$record_size) : '';
 					$match_data[1] = ($block_data_length[1] and ($block_data_length[1] > $running_record_pointer[1])) ? substr($block_data[1],$running_record_pointer[1],$record_size) : '';
 					if ($match_data[0] ge $match_data[1]) {
@@ -1033,12 +1069,12 @@ sub update_group {
 					$target_record_offset += $record_size + 1;
 					if ($target_record_offset >= $target_size) { # We've filled the target block. Save it and start a new one.
 						if (not $db->put({ -key => "$PRELOAD_GROUP_ENUM_DATA$group_enum$target_blocks$target_block_counter",
-						                 -value => $target_data })) {
+							             -value => $target_data })) {
 							croak (__PACKAGE__ . "::update_group() - Unable to save sort record to '$PRELOAD_GROUP_ENUM_DATA$group_enum$target_blocks$target_block_counter'\n");
 						}
 						$target_block_counter++;
 						$target_size = ($block_data_length[0] - $running_record_pointer[0]) +
-                                  ($block_data_length[1] - $running_record_pointer[1]);
+							      ($block_data_length[1] - $running_record_pointer[1]);
 						$target_size = $max_block_bytes if ($target_size > $max_block_bytes);
 						$target_size = 0 if ($target_size < 0);
 						$target_data = ' ' x $target_size;
@@ -1048,7 +1084,7 @@ sub update_group {
 			}
 			if ($target_record_offset) { # We have an unsaved target block. Save it.
 				if (not $db->put({ -key => "$PRELOAD_GROUP_ENUM_DATA$group_enum$target_blocks$target_block_counter",
-					             -value => $target_data })) {
+							     -value => $target_data })) {
 					croak (__PACKAGE__ . "::update_group() - Unable to save sort record to '$PRELOAD_GROUP_ENUM_DATA$group_enum$target_blocks$target_block_counter'\n");
 				}
 			}
@@ -1060,7 +1096,7 @@ sub update_group {
 	}
 	# The current 'target_blocks' holds the fully sorted records
 	# Extract the 'sets' of KEYED_INDEX_DATA and save them.
-	my $current_key_enum     = $null_enum;
+	my $current_key_enum     = $NULL_ENUM;
 	my $current_block_number = 0;
 	my $current_key_data     = {};
 	my $dirty_counter        = 0;
@@ -1075,10 +1111,10 @@ sub update_group {
 		for (my $count=0; $count<= $#key_records; $count++) {
 			my ($key_enum,$index_enum,$ranking) = split(/:/,$key_records[$count],3);
 			if ($key_enum ne $current_key_enum) {
-				if ($current_key_enum ne $null_enum) {
-					my $keyed_index_record = $self->_pack_list($current_key_data);
+				if ($current_key_enum ne $NULL_ENUM) {
+					my $keyed_index_record = _pack_list($current_key_data);
 					if (not $db->put({ -key => "$GROUP_ENUM_DATA$group_enum$KEYED_INDEX_LIST$current_key_enum" ,
-                                     -value => $keyed_index_record })) {
+							         -value => $keyed_index_record })) {
 						croak (__PACKAGE__ .. "::update_group() - Unable to save KEYED_INDEX_LIST record ''\n");
 					}
 				}
@@ -1100,10 +1136,10 @@ sub update_group {
 	}
 
 	# Save the final key_enum set, if needed
-	if ($dirty_counter and ($current_key_enum ne $null_enum)) {
-		my $keyed_index_record = $self->_pack_list($current_key_data);
+	if ($dirty_counter and ($current_key_enum ne $NULL_ENUM)) {
+		my $keyed_index_record = _pack_list($current_key_data);
 		if (not $db->put({ -key => "$GROUP_ENUM_DATA$group_enum$KEYED_INDEX_LIST$current_key_enum",
-                         -value => $keyed_index_record })) {
+						 -value => $keyed_index_record })) {
 			croak (__PACKAGE__ .. "::update_group() - Unable to save KEYED_INDEX_LIST record ''\n");
 		}
 	}
@@ -1124,15 +1160,15 @@ sub update_group {
 	# remove the original database
 	$self->remove_group({ -group => $group });
 
-   	# We don't want the cache returning old info after an update
-   	$self->clear_cache;
+	   # We don't want the cache returning old info after an update
+	   $self->clear_cache;
 }
 
 ####################################################################
 
 =over 4
 
-=item C<search($parm_ref);>
+=item C<search({ -query =E<gt> $query [,-cache =E<gt> 1] });>
 
 Performs a query on the map and returns the results as a
 Search::InvertedIndex::Result object containing the keys and rankings.
@@ -1151,7 +1187,6 @@ my $result = $inv_map->search({ -query => $query });
 
 where '$query' is a Search::InvertedIndex::Query object.
 
-
 Each node can either be a specific search term with an optional weighting
 term (a Search::InvertedIndex::Query::Leaf object) or a logic term with
 its own sub-branches (a Search::Inverted::Query object).
@@ -1162,6 +1197,11 @@ multiplication of their base ranking before combination with the other logic ter
 This allows recursive use of search to resolve arbitrarily
 complex boolean searches and weight different search terms.
 
+The optional -cache parameter instructs the database to cache (
+if the -search_cache_dir and -search_cache_size initialization
+parameters are configured for use) the search and results for
+performance on repeat searches. '1' means use the cache, '0' means do not.
+
 =back
 
 =cut
@@ -1169,24 +1209,17 @@ complex boolean searches and weight different search terms.
 sub search {
 	my $self = shift;
 
-    my ($parm_ref) = {};
-    if ($#_ == 0) {
-        $parm_ref  = shift;
-    } elsif ($#_ > 0) {
-        %$parm_ref = @_;
-    }
-	my $parms = Class::ParmList->new ({ -parms => $parm_ref,
-                                        -legal => ['-cache'],
-                                     -required => ['-query'],
-                                     -defaults => {-cache => 1},
-                                  });
-
-    if (not defined $parms) {
-    	my $error_message = Class::ParmList->error;
+	my $parms = parse_parms({ -parms => \@_,
+							  -legal => ['-cache'],
+						   -required => ['-query'],
+						   -defaults => {-cache => 1},
+						  });
+	if (not defined $parms) {
+		my $error_message = Class::ParmList->error;
 		croak (__PACKAGE__ . "::search() - $error_message\n");
-    }
+	}
 	my ($query,$use_cache) = $parms->get(qw(-query -cache));
-	my $db    = $self->get(-database);
+	my $db                 = $self->get(-database);
 	if (not $db) {
 		croak (__PACKAGE__ . "::search() - No database opened for use\n");
 	}
@@ -1194,12 +1227,13 @@ sub search {
 	# Check the cache first
 	my ($cache,$cache_key);
 	if ($use_cache) {
-		my ($cache_dir, $cache_size) = $self->get(-search_cache_dir, -search_cache_size);
+        my $cache_dir = $self->search_cache_dir;
+        my $cache_size = $self->search_cache_size;
 		if (defined ($cache_dir) and ($cache_size > 0)) {
 			$cache = Tie::FileLRUCache->new({ -cache_dir => $cache_dir,
-			                                    -keep_last => $cache_size,
-											 });
-		    $cache_key = $cache->make_cache_key({ -key => $query });	
+							                  -keep_last => $cache_size,
+							                 });
+			$cache_key = $cache->make_cache_key({ -key => $query });
 			$cache_key = $self->_untaint($cache_key);
 			my ($hit,$result_from_cache) = $cache->check({ -cache_key => $cache_key, });
 			return $result_from_cache if ($hit);
@@ -1211,21 +1245,21 @@ sub search {
 
 	# Sort the results into an array
 	my $sorted_indexes = [];
-    @$sorted_indexes = map { { -index_enum => $_, -ranking => $indexes->{$_}} }
-                        sort { $indexes->{$b} <=> $indexes->{$a} }
-                         keys %$indexes;
+	@$sorted_indexes = map { { -index_enum => $_, -ranking => $indexes->{$_}} }
+						sort { $indexes->{$b} <=> $indexes->{$a} }
+						 keys %$indexes;
 
 	# Make the Result object and load the search results into it
 	my $result = Search::InvertedIndex::Result->new({ -inv_map => $self,
-	                                                    -query => $query,
-												      -indexes => $sorted_indexes,
-												    -use_cache => $use_cache,
-												  });	
+							                            -query => $query,
+							                          -indexes => $sorted_indexes,
+							                        -use_cache => $use_cache,
+							                      });
 
 	# If we are caching, cache the result of the search
 	if ($cache) {
 		$cache->update({ -cache_key => $cache_key,
-		                     -value => $result,
+							 -value => $result,
 						   });
 	}
 
@@ -1237,7 +1271,7 @@ sub search {
 
 =over 4
 
-=item C<data_for_index($parm_ref);>
+=item C<data_for_index({ -index =E<gt> $index });>
 
 Returns the data record for the passed -index. Returns undef
 if no matching -index is in the system.
@@ -1252,21 +1286,7 @@ Example:
 sub data_for_index {
 	my ($self) = shift;
 
-    my ($parm_ref) = {};
-    if ($#_ == 0) {
-        $parm_ref  = shift;
-    } elsif ($#_ > 0) {
-        %$parm_ref = @_;
-    }
-	my $parms = Class::ParmList->new ({ -parms => $parm_ref,
-                                     -required => ['-index'],
-                                  });
-
-    if (not defined $parms) {
-    	my $error_message = Class::ParmList->error;
-		croak (__PACKAGE__ . "::data_for_index() - $error_message\n");
-	}
-	my ($index)    = $parms->get('-index');
+	my ($index)    = simple_parms(['-index'],@_);
 	my ($db,$thaw) = $self->get('-database','-thaw');
 	if (not $db) {
 		croak (__PACKAGE__ . "::data_for_index() - No database opened for use\n");
@@ -1278,7 +1298,7 @@ sub data_for_index {
 		croak (__PACKAGE__ . "::data_for_index() - Corrupt database. Record '$INDEX_ENUM_DATA${index_enum}_data' not found in system unexpectedly.\n");
 	}
 	my ($data_ref) = &$thaw($data_record);
-	$data_ref->{-data};
+	return $data_ref->{-data};
 }
 
 ####################################################################
@@ -1298,7 +1318,34 @@ sub clear_all {
 
 	my $database = $self->get(-database);
 	$database->clear;
-	$self->clear_cache;	
+	$self->clear_cache;
+}
+
+####################################################################
+# Special accessor to improve performance
+sub search_cache_dir {
+    my $self = shift;
+    my $package = __PACKAGE__;
+    if (@_ == 1) {
+        $self->{$package}->{-search_cache_dir} = shift;
+        return;
+    } else {
+        return $self->{$package}->{-search_cache_dir};
+    }
+}
+
+####################################################################
+# Special accessor to improve performance
+
+sub search_cache_size {
+    my $self = shift;
+    my $package = __PACKAGE__;
+    if (@_ == 1) {
+        $self->{$package}->{-search_cache_size} = shift;
+        return;
+    } else {
+        return $self->{$package}->{-search_cache_size};
+    }
 }
 
 ####################################################################
@@ -1316,11 +1363,13 @@ Completely clears the contents of the search cache.
 sub clear_cache {
 	my ($self) = shift;
 
-	my ($cache_dir, $cache_size) = $self->get(-search_cache_dir, -search_cache_size);
+    my $cache_dir = $self->search_cache_dir;
+    my $cache_size = $self->search_cache_size;
+
 	if (defined ($cache_dir) and ($cache_size > 0)) {
 		my $cache = Tie::FileLRUCache->new({ -cache_dir => $cache_dir,
-		                                       -keep_last => $cache_size,
-										 });
+							                   -keep_last => $cache_size,
+							             });
 		$cache->clear;
 	}
 }
@@ -1348,23 +1397,6 @@ sub close {
 	if (defined $database) {
 		croak(__PACKAGE__ . "::close - failed to clear -database\n");
 	}
-}
-
-####################################################################
-
-=over 4
-
-=item C<DESTROY;>
-
-Closes the currently open -map and flushes all associated buffers.
-
-=back
-
-=cut
-
-sub DESTROY {
-	my ($self) = shift;
-	$self->close;
 }
 
 ####################################################################
@@ -1455,7 +1487,7 @@ sub number_of_keys {
 
 =over 4
 
-=item C<number_of_indexes_in_group($parm_ref);>
+=item C<number_of_indexes_in_group({ -group =E<gt> $group });>
 
 Returns the raw number of indexes in a specific group.
 
@@ -1468,24 +1500,11 @@ Example: my $n = $inv_map->number_of_indexes_in_group({ -group => $group });
 sub number_of_indexes_in_group {
 	my $self = shift;
 
-    my ($parm_ref) = {};
-    if ($#_ == 0) {
-        $parm_ref  = shift;
-    } elsif ($#_ > 0) {
-        %$parm_ref = @_;
-    }
-	my $parms = Class::ParmList->new ({ -parms => $parm_ref,
-                                     -required => ['-group'],
-                                   });
-    if (not defined $parms) {
-    	my $error_message = Class::ParmList->error;
-		croak (__PACKAGE__ . "::number_of_indexes_in_group() - $error_message\n");
-    }
-	my ($db)                = $self->get(-database);
+	my ($group) = simple_parms(['-group'],@_);
+	my ($db)    = $self->get(-database);
 	if (not $db) {
 		croak (__PACKAGE__ . "::number_of_indexes_in_group() - No database opened for use\n");
 	}
-	my ($group)             = $parms->get(-group);
 	my ($group_enum)        = $db->get({ -key => "$GROUP$group" });
 	if (not defined $group_enum) {
 		croak (__PACKAGE__ . "::number_of_indexes_in_group() - Group '$group' not in database\n");
@@ -1501,7 +1520,7 @@ sub number_of_indexes_in_group {
 
 =over 4
 
-=item C<number_of_keys_in_group($parm_ref);>
+=item C<number_of_keys_in_group({ -group =E<gt> $group });>
 
 Returns the raw number of keys in a specific group.
 
@@ -1514,25 +1533,12 @@ Example: my $n = $inv_map->number_of_keys_in_group({ -group => $group });
 sub number_of_keys_in_group {
 	my $self = shift;
 
-    my ($parm_ref) = {};
-    if ($#_ == 0) {
-        $parm_ref  = shift;
-    } elsif ($#_ > 0) {
-        %$parm_ref = @_;
-    }
-	my $parms = Class::ParmList->new ({ -parms => $parm_ref,
-                                     -required => ['-group'],
-                                   });
-    if (not defined $parms) {
-    	my $error_message = Class::ParmList->error;
-		croak (__PACKAGE__ . "::number_of_keys_in_group() - $error_message\n");
-    }
-	my ($db)                = $self->get(-database);
+	my ($group) = simple_parms(['-group'],@_);
+	my ($db)    = $self->get(-database);
 	if (not $db) {
 		croak (__PACKAGE__ . "::number_of_keys_in_group() - No database opened for use\n");
 	}
-	my ($group)             = $parms->get(-group);
-	my ($group_enum)        = $db->get ({ -key => "$GROUP$group" });
+	my ($group_enum) = $db->get ({ -key => "$GROUP$group" });
 	if (not defined $group_enum) {
 		croak (__PACKAGE__ . "::number_of_indexes_in_group() - Group '$group' not in database\n");
 	}
@@ -1547,7 +1553,7 @@ sub number_of_keys_in_group {
 
 =over 4
 
-=item C<add_group($parm_ref);>
+=item C<add_group({ -group =E<gt> $group });>
 
 Adds a new '-group' to the map. There is normally no need to
 call this method from outside the module. The addition of
@@ -1566,34 +1572,20 @@ It silently eats attempts to create an existing group.
 sub add_group {
 	my $self = shift;
 
-    my ($parm_ref) = {};
-    if ($#_ == 0) {
-        $parm_ref  = shift;
-    } elsif ($#_ > 0) {
-        %$parm_ref = @_;
-    }
-	my $parms = Class::ParmList->new ({ -parms => $parm_ref,
-                                     -required => ['-group'],
-                                  });
-    if (not defined $parms) {
-    	my $error_message = Class::ParmList->error;
-		croak (__PACKAGE__ . "::add_group() - $error_message\n");
-    }
-	my ($group)   = $parms->get(-group);
-	my ($db)      = $self->get(-database);
+	my ($group) = simple_parms(['-group'],@_);
+	my ($db)    = $self->get(-database);
 	if (not $db) {
 		croak (__PACKAGE__ . "::add_group() - No database opened for use\n");
 	}
-	my $null_enum = '-' x 12;
 
 	# Check if the group already exists in the system
 	my ($group_enum) = $db->get({ -key => "$GROUP$group" });
 	if (not defined $group_enum) {
-	    # Add the new group
+		# Add the new group
 		my ($group_enum_counter) = $db->get({ -key => 'group_enum_counter' });
 		my ($old_first_group_enum);
 		if (not defined $group_enum_counter) { # First group
-			$group_enum_counter = '0' x 12;
+			$group_enum_counter = $ZERO_ENUM;
 		} else {
 			$group_enum_counter = $self->_increment_enum($group_enum_counter);
 			$old_first_group_enum = $db->get({ -key => "${GROUP_ENUM}first_group_enum" });
@@ -1607,14 +1599,14 @@ sub add_group {
 		if (not $db->put({ -key => "$GROUP_ENUM_DATA${group_enum_counter}_number_of_indexes", -value => 0 })) {
 			croak (__PACKAGE__ . "::add_group() - Unable to save '$GROUP_ENUM_DATA${group_enum_counter}_number_of_indexes' -> '0'\n");
 		}
-		if (not $db->put({ -key => "$GROUP_ENUM_DATA${group_enum_counter}_key_enum_counter", -value => '0' x 12 })) {
+		if (not $db->put({ -key => "$GROUP_ENUM_DATA${group_enum_counter}_key_enum_counter", -value => $ZERO_ENUM })) {
 			croak (__PACKAGE__ . "::add_group() - Unable to save '$GROUP_ENUM_DATA${group_enum_counter}_group_key_enum_counter' -> '000000000000'\n");
 		}
-		if (not $db->put({ -key => "$GROUP_ENUM_DATA${group_enum_counter}_first_key_enum", -value => $null_enum })) {
-			croak (__PACKAGE__ . "::add_group() - Unable to save '$GROUP_ENUM_DATA${group_enum_counter}_first_key_enum' -> '$null_enum'\n");
+		if (not $db->put({ -key => "$GROUP_ENUM_DATA${group_enum_counter}_first_key_enum", -value => $NULL_ENUM })) {
+			croak (__PACKAGE__ . "::add_group() - Unable to save '$GROUP_ENUM_DATA${group_enum_counter}_first_key_enum' -> '$NULL_ENUM'\n");
 		}
-		if (not $db->put({ -key => "$GROUP_ENUM_DATA${group_enum_counter}_first_index_enum", -value => $null_enum })) {
-			croak (__PACKAGE__ . "::add_group() - Unable to save '$GROUP_ENUM_DATA${group_enum_counter}_first_index_enum' -> '$null_enum'\n");
+		if (not $db->put({ -key => "$GROUP_ENUM_DATA${group_enum_counter}_first_index_enum", -value => $NULL_ENUM })) {
+			croak (__PACKAGE__ . "::add_group() - Unable to save '$GROUP_ENUM_DATA${group_enum_counter}_first_index_enum' -> '$NULL_ENUM'\n");
 		}
 		if (not $db->put({ -key => "$GROUP$group", -value => $group_enum_counter })) {
 			croak (__PACKAGE__ . "::add_group() - Unable to save '$GROUP$group' -> '$group_enum_counter' map entry\n");
@@ -1622,18 +1614,18 @@ sub add_group {
 		if (not $db->put({ -key => 'group_enum_counter', -value => $group_enum_counter })) {
 			croak (__PACKAGE__ . "::add_group() - Unable to save updated group_enum_counter '$group_enum_counter' to map.");
 		}
-		my $first_group_enum_record = "$null_enum $null_enum $group";
+		my $first_group_enum_record = "$NULL_ENUM $NULL_ENUM $group";
 		# Rethread the head of an existing group link list to the new group
 		if (defined $old_first_group_enum) { # Record formated as: prev next group
 			my $old_first_group_enum_record = $db->get({ -key => "$GROUP_ENUM$old_first_group_enum" });
 			if (not defined $old_first_group_enum_record) {
 				croak (__PACKAGE__ . "::add_group() - Unable to read '$GROUP_ENUM$old_first_group_enum' record. Database may be corrupt.\n");
 			}
-			$old_first_group_enum_record =~ s/^$null_enum/$group_enum_counter/;
+			$old_first_group_enum_record =~ s/^$NULL_ENUM/$group_enum_counter/;
 			if (not $db->put({ -key => "$GROUP_ENUM$old_first_group_enum", -value => $old_first_group_enum_record })) {
 				croak (__PACKAGE__ . "::add_group() - Unable to update 'prev' enum reference for '$GROUP_ENUM$old_first_group_enum'\n");
 			}
-		    $first_group_enum_record = "$null_enum $old_first_group_enum $group";
+			$first_group_enum_record = "$NULL_ENUM $old_first_group_enum $group";
 		}
 		if (not $db->put({ -key => "$GROUP_ENUM$group_enum_counter", -value => $first_group_enum_record })) {
 			croak (__PACKAGE__ . "::add_group() - Unable to save '$GROUP_ENUM$group_enum_counter' -> '$first_group_enum_record' to map\n");
@@ -1659,7 +1651,7 @@ sub add_group {
 
 =over 4
 
-=item C<add_index($parm_ref);>
+=item C<add_index({ -index =E<gt> $index, -data =E<gt> $data });>
 
 Adds a index entry to the system.
 
@@ -1685,20 +1677,8 @@ The method returns the index_enum of the index.
 sub add_index {
 	my $self = shift;
 
-    my ($parm_ref) = {};
-    if ($#_ == 0) {
-        $parm_ref  = shift;
-    } elsif ($#_ > 0) {
-        %$parm_ref = @_;
-    }
-	my $parms = Class::ParmList->new ({ -parms => $parm_ref,
-                                     -required => ['-index','-data'],
-                                    });
-    if (not defined $parms) {
-    	my $error_message = Class::ParmList->error;
-		croak (__PACKAGE__ . "::add_index() - $error_message\n");
-    }
-	my ($index,$data) = $parms->get(qw(-index -data));
+	my ($index,$data) = simple_parms(['-index','-data'],@_);
+
 	if (not defined $data) {
 		croak (__PACKAGE__ . "::add_index() - -data for index may not be 'undef' value.");
 	}
@@ -1707,15 +1687,14 @@ sub add_index {
 	if (not $db) {
 		croak (__PACKAGE__ . "::add_index() - No database opened for use\n");
 	}
-	my ($null_enum)         = '-' x 12;
 	# Check if the index already exists in the system
 	my ($index_enum)        = $db->get({ -key => "$INDEX$index" });
 	if (not defined $index_enum) {
-	    # Add the new index
+		# Add the new index
 		my ($index_enum_counter) = $db->get({ -key => 'index_enum_counter' });
 		my ($old_first_index_enum);
 		if (not defined $index_enum_counter) {
-			$index_enum_counter = '0' x 12;
+			$index_enum_counter = $ZERO_ENUM;
 		} else {
 			$index_enum_counter = $self->_increment_enum($index_enum_counter);
 			$old_first_index_enum = $db->get({ -key => "${INDEX_ENUM}first_index_enum" });
@@ -1729,18 +1708,18 @@ sub add_index {
 		if (not $db->put({ -key => 'index_enum_counter', -value => $index_enum_counter })) {
 			croak (__PACKAGE__ . "::add_index() - Unable to save updated index_enum_counter '$index_enum_counter' to map.");
 		}
-		my $first_index_enum_record = "$null_enum $null_enum $index";
+		my $first_index_enum_record = "$NULL_ENUM $NULL_ENUM $index";
 		if (defined $old_first_index_enum) { # Record formated as: prev next index
 			my $old_first_index_enum_record = $db->get({ -key => "$INDEX_ENUM$old_first_index_enum" });
 			if (not defined $old_first_index_enum_record) {
 				croak (__PACKAGE__ . "::add_index() - Unable to read '$INDEX_ENUM$old_first_index_enum' record. Database may be corrupt.\n");
 			}
-			$old_first_index_enum_record =~ s/^$null_enum/$index_enum_counter/;
+			$old_first_index_enum_record =~ s/^$NULL_ENUM/$index_enum_counter/;
 			if (not $db->put({ -key => "$INDEX_ENUM$old_first_index_enum",
-			                 -value => $old_first_index_enum_record, })) {
+							 -value => $old_first_index_enum_record, })) {
 				croak (__PACKAGE__ . "::add_index() - Unable to update 'prev' enum reference for '$INDEX_ENUM$old_first_index_enum'\n");
 			}
-		    $first_index_enum_record = "$null_enum $old_first_index_enum $index";
+			$first_index_enum_record = "$NULL_ENUM $old_first_index_enum $index";
 		}
 		if (not $db->put({ -key => "$INDEX_ENUM$index_enum_counter", -value => $first_index_enum_record })) {
 			croak (__PACKAGE__ . "::add_index() - Unable to save '$INDEX_ENUM$index_enum_counter' -> '$first_index_enum_record' to map\n");
@@ -1768,7 +1747,7 @@ sub add_index {
 	}
 	# We don't want the cache returning old info after an update
 	$self->clear_cache;
-	
+
 	$index_enum;
 }
 
@@ -1776,12 +1755,16 @@ sub add_index {
 
 =over 4
 
-=item C<add_index_to_group($parm_ref);>
+=item C<add_index_to_group({ -group =E<gt> $group, -index =E<gt> $index[, -data =E<gt> $data] });>
 
 Adds an index entry to a group. If the index does not already
 exist in the system, adds it to the system as well.
 
-Example: $inv_map->add_index_to_group({ -group => $group, '-index' => $index[, -data => $data]});
+Examples:
+
+   $inv_map->add_index_to_group({ -group => $group, '-index' => $index});
+
+   $inv_map->add_index_to_group({ -group => $group, '-index' => $index, -data => $data});
 
 Returns the 'index_enum' for the index record.
 
@@ -1795,6 +1778,8 @@ new entries.
 It cannot be used to add index to non-existant groups. This is
 a feature not a bug.
 
+The -data parameter is optional
+
 =back
 
 =cut
@@ -1802,22 +1787,16 @@ a feature not a bug.
 sub add_index_to_group {
 	my $self = shift;
 
-    my ($parm_ref) = {};
-    if ($#_ == 0) {
-        $parm_ref  = shift;
-    } elsif ($#_ > 0) {
-        %$parm_ref = @_;
-    }
-	my $parms = Class::ParmList->new ({ -parms => $parm_ref,
-                                        -legal => ['-data'],
-                                     -required => ['-group', '-index'],
-                                     -defaults => { -data => undef },
-                                    });
+	my $parms = parse_parms ({ -parms => \@_,
+							   -legal => ['-data'],
+							-required => ['-group', '-index'],
+							-defaults => { -data => undef },
+						 });
 
-    if (not defined $parms) {
-    	my $error_message = Class::ParmList->error;
+	if (not defined $parms) {
+		my $error_message = Class::ParmList->error;
 		croak (__PACKAGE__ . "::add_index_to_group() - $error_message\n");
-    }
+	}
 
 	my ($group,$index,$data) = $parms->get(qw(-group -index -data));
 	my ($db)         = $self->get(-database);
@@ -1835,26 +1814,25 @@ sub add_index_to_group {
 		}
 		$index_enum = $self->add_index({ '-index' => $index, -data => $data });
 	}
-	
+
 	# Update the INDEX_ENUM_GROUP_CHAIN  and number of indexes for the group as necessary
-	my ($null_enum)         = '-' x 12;
 	# Check if the index already exists in the group (if it doesn't, there isn't much to do)
 	my ($chain) = $db->get({ -key => "$GROUP_ENUM_DATA$group_enum$INDEX_ENUM_GROUP_CHAIN$index_enum" });
 	if (not defined $chain) {
-	    # Add the index_enum to the index chain for the group
+		# Add the index_enum to the index chain for the group
 		my $old_first_index_enum = $db->get({ -key => "$GROUP_ENUM_DATA${group_enum}_first_index_enum" });
-		my $first_index_enum_record = "$null_enum $null_enum";
-		if (defined ($old_first_index_enum) and ($old_first_index_enum ne $null_enum)) { # Record formated as: prev next index
+		my $first_index_enum_record = "$NULL_ENUM $NULL_ENUM";
+		if (defined ($old_first_index_enum) and ($old_first_index_enum ne $NULL_ENUM)) { # Record formated as: prev next index
 			my $old_first_index_enum_record = $db->get({ -key => "$GROUP_ENUM_DATA${group_enum}$INDEX_ENUM_GROUP_CHAIN$old_first_index_enum" });
 			if (not defined $old_first_index_enum_record) {
 				croak (__PACKAGE__ . "::add_index_to_group() - Unable to read '$GROUP_ENUM_DATA${group_enum}$INDEX_ENUM_GROUP_CHAIN$old_first_index_enum' record. Database may be corrupt.\n");
 			}
-			$old_first_index_enum_record =~ s/^$null_enum/$index_enum/;
+			$old_first_index_enum_record =~ s/^$NULL_ENUM/$index_enum/;
 			if (not $db->put({ -key => "$GROUP_ENUM_DATA$group_enum$INDEX_ENUM_GROUP_CHAIN$old_first_index_enum",
-			                 -value => $old_first_index_enum_record, })) {
+							 -value => $old_first_index_enum_record, })) {
 				croak (__PACKAGE__ . "::add_entry_to_group() - Unable to update 'prev' enum reference for '$GROUP_ENUM_DATA$group_enum$INDEX_ENUM_GROUP_CHAIN$old_first_index_enum'\n");
 			}
-		    $first_index_enum_record = "$null_enum $old_first_index_enum";
+			$first_index_enum_record = "$NULL_ENUM $old_first_index_enum";
 		}
 
 		if (not $db->put({ -key => "$GROUP_ENUM_DATA$group_enum$INDEX_ENUM_GROUP_CHAIN$index_enum", -value => $first_index_enum_record })) {
@@ -1877,15 +1855,15 @@ sub add_index_to_group {
 
 	# We don't want the cache returning old info after an update
 	$self->clear_cache;
-	
-	$index_enum;
+
+	return $index_enum;
 }
 
 ####################################################################
 
 =over 4
 
-=item C<add_key_to_group($parm_ref);>
+=item C<add_key_to_group({ -group =E<gt> $group, -key =E<gt> $key });>
 
 Adds a key entry to a group.
 
@@ -1910,23 +1888,26 @@ a feature not a bug.
 sub add_key_to_group {
 	my $self = shift;
 
-    my ($parm_ref) = {};
-    if ($#_ == 0) {
-        $parm_ref  = shift;
-    } elsif ($#_ > 0) {
+    my $parm_ref = {};
+    if (@_ == 1) {
+        $parm_ref = shift;
+    } else {
         %$parm_ref = @_;
     }
-	my $parms = Class::ParmList->new ({ -parms => $parm_ref,
-                                     -required => ['-group', '-key'],
-                                    });
-
-    if (not defined $parms) {
-    	my $error_message = Class::ParmList->error;
-		croak (__PACKAGE__ . "::add_key_to_group() - $error_message\n");
+    my $group = $parm_ref->{'-group'};
+    if (not defined $group) {
+		croak (__PACKAGE__ . "::add_key_to_group() - '-group' parameter not passed.\n");
+    }
+    my $key   = $parm_ref->{'-key'};
+    if (not defined $key) {
+		croak (__PACKAGE__ . "::add_key_to_group() - '-key' parameter not passed.\n");
+    }
+    # Hidden performance hack. We can optionally pass the database ref in via the calling parms
+    my $db   = $parm_ref->{'-database'};
+    if (not defined $db) {
+	    ($db)  = $self->get(-database);
     }
 
-	my ($group,$key) = $parms->get(-group,-key);
-	my ($db)         = $self->get(-database);
 	if (not $db) {
 		croak (__PACKAGE__ . "::add_key_to_group() - No database opened for use\n");
 	}
@@ -1934,11 +1915,10 @@ sub add_key_to_group {
 	if (not defined $group_enum) {
 		croak (__PACKAGE__ . "::add_key_to_group() - Attempted to add -key '$key' to non-existant -group '$group'\n");
 	}
-	my $null_enum = '-' x 12;
 	my $key_enum  = $db->get({ -key => "$GROUP_ENUM_DATA${group_enum}$KEY_TO_KEY_ENUM$key" });
 	if (not defined $key_enum) {
-	
-	    # Add the new key
+
+		# Add the new key
 		my ($key_enum_counter) = $db->get({ -key => "$GROUP_ENUM_DATA${group_enum}_key_enum_counter" });
 		my ($old_first_key_enum);
 		if (not defined $key_enum_counter) {
@@ -1951,7 +1931,7 @@ sub add_key_to_group {
 		}
 
 		# Rethread the end of the next/prev links to place the new key as the 'first' key for the group
-		if ($old_first_key_enum ne $null_enum) {
+		if ($old_first_key_enum ne $NULL_ENUM) {
 			# If the existing 'first_key_enum' is not the null enum value, update its 'prev' field to the new 'key_enum'
 			my $old_first_key_enum_record = $db->get({ -key => "$GROUP_ENUM_DATA${group_enum}$KEY_ENUM_TO_KEY_AND_CHAIN$old_first_key_enum" });
 			if (not defined $old_first_key_enum_record) {
@@ -1963,20 +1943,20 @@ sub add_key_to_group {
 			}
 		}
 		# Prev Next Key
-	    my $first_key_enum_record = "$null_enum $old_first_key_enum $key";
+		my $first_key_enum_record = "$NULL_ENUM $old_first_key_enum $key";
 
 		if (not $db->put({ -key => "$GROUP_ENUM_DATA${group_enum}$KEY_ENUM_TO_KEY_AND_CHAIN$key_enum_counter",
-		                 -value => $first_key_enum_record })) {
+						 -value => $first_key_enum_record })) {
 			croak (__PACKAGE__ . "::add_key_to_group() - Unable to save '$GROUP_ENUM_DATA$group_enum$KEY_ENUM_TO_KEY_AND_CHAIN$key_enum_counter' -> '$first_key_enum_record' to map\n");
 		}
 		if (not $db->put({ -key => "$GROUP_ENUM_DATA${group_enum}_first_key_enum",
-		                 -value => $key_enum_counter })) {
+						 -value => $key_enum_counter })) {
 			croak (__PACKAGE__ . "::add_key_to_group() - Unable to save '$GROUP_ENUM_DATA${group_enum}_first_key_enum' -> '$key_enum_counter' map entry.\n");
 		}
 
 		# Add to KEY_TO_KEY_ENUM
 		if (not $db->put({ -key => "$GROUP_ENUM_DATA$group_enum${KEY_TO_KEY_ENUM}$key",
-		                 -value => $key_enum_counter })) {
+						 -value => $key_enum_counter })) {
 			croak (__PACKAGE__ . "::add_key_to_group() - Unable to save '$GROUP_ENUM_DATA$group_enum${KEY_TO_KEY_ENUM}$key' -> '$key_enum_counter' to map\n");
 		}
 
@@ -1998,7 +1978,7 @@ sub add_key_to_group {
 		if (not $db->put({ -key => 'number_of_keys', -value => $number_of_keys })) {
 			croak (__PACKAGE__ . "::add_key_to_group() - Unable to update 'number_of_keys' -> '$number_of_keys'. Database may be corrupt.\n");
 		}
-		
+
 		# Update the key_enum_counter
 		if (not $db->put({ -key => "$GROUP_ENUM_DATA${group_enum}_key_enum_counter", -value => $key_enum_counter })) {
 			croak (__PACKAGE__ . "::add_key_to_group() - Unable to update '${GROUP_ENUM_DATA}${$group_enum}_key_enum_counter' -> '$key_enum_counter'. Database may be corrupt.\n");
@@ -2009,7 +1989,7 @@ sub add_key_to_group {
 	}
 	# We don't want the cache returning old info after an update
 	$self->clear_cache;
-	
+
 	$key_enum;
 }
 
@@ -2017,7 +1997,7 @@ sub add_key_to_group {
 
 =over 4
 
-=item C<add_entry_to_group($parm_ref);>
+=item C<add_entry_to_group({ -group =E<gt> $group, -key =E<gt> $key, -index =E<gt> $index, -ranking =E<gt> $ranking });>
 
 Adds a reference to a particular index for a key with a ranking
 to a specific group.
@@ -2034,20 +2014,8 @@ It *will* create new -keys as needed.
 sub add_entry_to_group {
 	my $self = shift;
 
-    my ($parm_ref) = {};
-    if ($#_ == 0) {
-        $parm_ref  = shift;
-    } elsif ($#_ > 0) {
-        %$parm_ref = @_;
-    }
-	my $parms = Class::ParmList->new ({ -parms => $parm_ref,
-                                     -required => ['-group', '-key', '-index', '-ranking'],
-                                     });
-    if (not defined $parms) {
-    	my $error_message = Class::ParmList->error;
-		croak (__PACKAGE__ . "::add_entry_to_group() - $error_message\n");
-    }
-	my ($group,$key,$index,$ranking) = $parms->get(qw(-group -key -index -ranking));
+	my ($group,$key,$index,$ranking) = simple_parms(['-group', '-key', '-index', '-ranking'],@_);
+
 	$ranking = int($ranking+0.5);
 	if (($ranking > 32767) or ($ranking < -32768)) {
 		croak (__PACKAGE__ . "::add_entry_to_group() - Legal ranking values must be between -32768 and 32768 inclusive\n");
@@ -2077,9 +2045,9 @@ sub add_entry_to_group {
 	if (not defined $keyed_record) {
 		$keyed_record = '';
 	}
-	my $keyed_indexes = $self->_unpack_list($keyed_record);
+	my $keyed_indexes = _unpack_list($keyed_record);
 	$keyed_indexes->{$index_enum} = $ranking;
-	$keyed_record = $self->_pack_list($keyed_indexes);
+	$keyed_record = _pack_list($keyed_indexes);
 	if (not $db->put({ -key => "$GROUP_ENUM_DATA${group_enum}$KEYED_INDEX_LIST$key_enum", -value => $keyed_record })) {
 		croak (__PACKAGE__ . "::add_entry_to_group() - Failed to save updated '$GROUP_ENUM_DATA${group_enum}$KEYED_INDEX_LIST$key_enum' -> (list of ranked indexes)\n");
 	}
@@ -2104,11 +2072,11 @@ sub add_entry_to_group {
 			croak (__PACKAGE__ . "::add_entry_to_group () - Database may be corrupt. Unable to update '$GROUP_ENUM_DATA${group_enum}_number_of_indexes' record to '$number_of_group_indexes' for group '$group'\n");
 		}
 	} else {
-		$indexed_keys = $self->_unpack_list($indexed_record);
+		$indexed_keys = _unpack_list($indexed_record);
 	}
 	$indexed_keys->{$key_enum} = $ranking;
 	my @displ_list = %$indexed_keys;
-	$indexed_record = $self->_pack_list($indexed_keys);
+	$indexed_record = _pack_list($indexed_keys);
 	if (not $db->put({ -key => "$GROUP_ENUM_DATA${group_enum}$INDEXED_KEY_LIST$index_enum", -value => $indexed_record })) {
 		croak (__PACKAGE__ . "::add_entry_to_group() - Failed to save updated '$GROUP_ENUM_DATA${group_enum}$INDEXED_KEY_LIST$key_enum' -> (list of ranked keys)\n");
 	}
@@ -2118,24 +2086,23 @@ sub add_entry_to_group {
 		croak (__PACKAGE__ . "::add_entry_to_group() - Database is failing to correctly store and retreive binary data\n");
 	}
 	# Update the INDEX_ENUM_GROUP_CHAIN as necessary
-	my ($null_enum)         = '-' x 12;
 	# Check if the index already exists in the group
 	my ($chain) = $db->get({ -key => "$GROUP_ENUM_DATA$group_enum$INDEX_ENUM_GROUP_CHAIN$index_enum" });
 	if (not defined $chain) {
-	    # Add the index_enum to the index chain for the group
+		# Add the index_enum to the index chain for the group
 		my $old_first_index_enum = $db->get({ -key => "$GROUP_ENUM_DATA${group_enum}_first_index_enum" });
-		my $first_index_enum_record = "$null_enum $null_enum";
-		if (defined ($old_first_index_enum) and ($old_first_index_enum ne $null_enum)) { # Record formated as: prev next index
+		my $first_index_enum_record = "$NULL_ENUM $NULL_ENUM";
+		if (defined ($old_first_index_enum) and ($old_first_index_enum ne $NULL_ENUM)) { # Record formated as: prev next index
 			my $old_first_index_enum_record = $db->get({ -key => "$GROUP_ENUM_DATA${group_enum}$INDEX_ENUM_GROUP_CHAIN$old_first_index_enum" });
 			if (not defined $old_first_index_enum_record) {
 				croak (__PACKAGE__ . "::add_entry_to_group() - Unable to read '$GROUP_ENUM_DATA${group_enum}$INDEX_ENUM_GROUP_CHAIN$old_first_index_enum' record. Database may be corrupt.\n");
 			}
-			$old_first_index_enum_record =~ s/^$null_enum/$index_enum/;
+			$old_first_index_enum_record =~ s/^$NULL_ENUM/$index_enum/;
 			if (not $db->put({ -key => "$GROUP_ENUM_DATA$group_enum$INDEX_ENUM_GROUP_CHAIN$old_first_index_enum",
-			                 -value => $old_first_index_enum_record, })) {
+							 -value => $old_first_index_enum_record, })) {
 				croak (__PACKAGE__ . "::add_entry_to_group() - Unable to update 'prev' enum reference for '$GROUP_ENUM_DATA$group_enum$INDEX_ENUM_GROUP_CHAIN$old_first_index_enum'\n");
 			}
-		    $first_index_enum_record = "$null_enum $old_first_index_enum";
+			$first_index_enum_record = "$NULL_ENUM $old_first_index_enum";
 		}
 		if (not $db->put({ -key => "$GROUP_ENUM_DATA$group_enum$INDEX_ENUM_GROUP_CHAIN$index_enum", -value => $first_index_enum_record })) {
 			croak (__PACKAGE__ . "::add_entry_to_group() - Unable to save '$GROUP_ENUM_DATA$group_enum$INDEX_ENUM_GROUP_CHAIN$index_enum' -> '$first_index_enum_record' to map\n");
@@ -2155,7 +2122,7 @@ sub add_entry_to_group {
 
 =over 4
 
-=item C<remove_group($parm_ref);>
+=item C<remove_group({ -group =E<gt> $group });>
 
 Remove all entries for a group from the map.
 
@@ -2174,26 +2141,11 @@ Use this method when you wish to completely delete a searchable
 sub remove_group {
 	my $self = shift;
 
-    my ($parm_ref) = {};
-    if ($#_ == 0) {
-        $parm_ref  = shift;
-    } elsif ($#_ > 0) {
-        %$parm_ref = @_;
-    }
-	my $parms = Class::ParmList->new ({ -parms => $parm_ref,
-                                     -required => ['-group'],
-                                    });
-    if (not defined $parms) {
-    	my $error_message = Class::ParmList->error;
-		croak (__PACKAGE__ . "::remove_group() - $error_message\n");
-    }
-
-	my ($group)     = $parms->get(-group);
-	my ($db)        = $self->get(-database);
+	my ($group) = simple_parms(['-group'],@_);
+	my ($db)    = $self->get(-database);
 	if (not $db) {
 		croak (__PACKAGE__ . "::remove_group() - No database opened for use\n");
 	}
-	my ($null_enum) = '-' x 12;
 
 	# Check if the group exists in the system
 	my ($group_enum)        = $db->get({ -key => "$GROUP$group" });
@@ -2209,7 +2161,7 @@ sub remove_group {
 
 	# Chase the linked list of 'key_enum's and delete them
 	my $key_enum = $first_key_enum;
-	while ($key_enum ne $null_enum) {
+	while ($key_enum ne $NULL_ENUM) {
 		my ($key_enum_record) = $db->get({ -key => "$GROUP_ENUM_DATA${group_enum}$KEY_ENUM_TO_KEY_AND_CHAIN$key_enum" });
 		if (not defined $key_enum_record) {
 			croak (__PACKAGE__ . "::remove_group() - Corrupt database. No '$GROUP_ENUM_DATA${group_enum}$KEY_ENUM_TO_KEY_AND_CHAIN$key_enum' record found for group '$group'\n");
@@ -2236,7 +2188,7 @@ sub remove_group {
 
 	# Chase the linked list of 'index_enum's and delete them
 	my $index_enum = $first_index_enum;
-	while ($index_enum ne $null_enum) {
+	while ($index_enum ne $NULL_ENUM) {
 		my ($index_enum_record) = $db->get({ -key => "$GROUP_ENUM_DATA${group_enum}$INDEX_ENUM_GROUP_CHAIN$index_enum" });
 		if (not defined $index_enum_record) {
 			croak (__PACKAGE__ . "::remove_group() - Corrupt database. No '$GROUP_ENUM_DATA${group_enum}$KEY_ENUM_TO_KEY_AND_CHAIN$index_enum' record found for group '$group'\n");
@@ -2263,7 +2215,7 @@ sub remove_group {
 	if (not $db->put({ -key => 'number_of_keys', -value => $number_of_keys })) {
 		croak (__PACKAGE__ . "::remove_group() - Unable to store updated 'number_of_keys' ($number_of_keys) for system\n");
 	}
-	
+
 	# remove the group key and index counters
 	if (not $db->delete({ -key => "$GROUP_ENUM_DATA${group_enum}_number_of_keys" })) {
 		croak (__PACKAGE__ . "::remove_group() - Unable to delete '$GROUP_ENUM_DATA${group_enum}_number_of_keys' record\n");
@@ -2275,7 +2227,7 @@ sub remove_group {
 		croak (__PACKAGE__ . "::remove_group() - Unable to delete '$GROUP_ENUM_DATA${group_enum}_number_of_indexes' record\n");
 	}
 
-    # Get the 'next' and 'prev' pointers for the group.
+	# Get the 'next' and 'prev' pointers for the group.
 	my ($group_record) = $db->get({ -key => "$GROUP_ENUM$group_enum" });
 	if (not defined $group_record) {
 		croak (__PACKAGE__ . "::remove_group() - Inconsistent database. Unable to find '$GROUP_ENUM$group_enum' record for group '$group'\n");
@@ -2288,7 +2240,7 @@ sub remove_group {
 	}
 
 	# Point the 'next' for the previous group to the next group_enum
-	if ($prev_group_enum ne $null_enum) {
+	if ($prev_group_enum ne $NULL_ENUM) {
 		my $prev_group_record = $db->get({ -key => "$GROUP_ENUM$prev_group_enum" });
 		if (not defined $prev_group_record) {
 			croak (__PACKAGE__ . "::remove_group() - Inconsistent database. Unable to find '$GROUP_ENUM$prev_group_enum' record for group '$group'\n");
@@ -2298,9 +2250,9 @@ sub remove_group {
 			croak (__PACKAGE__ . "::remove_group() - Unable to update '$GROUP_ENUM$prev_group_enum' record to '$prev_group_record'\n");
 		}
 	}
-	
+
 	# Point the 'prev' for the next group to the previous group_enum
-	if ($next_group_enum ne $null_enum) {
+	if ($next_group_enum ne $NULL_ENUM) {
 		my $next_group_record = $db->get({ -key => "$GROUP_ENUM$next_group_enum" });
 		if (not defined $next_group_record) {
 			croak (__PACKAGE__ . "::remove_group() - Inconsistent database. Unable to find '$GROUP_ENUM$next_group_enum' record for group '$group'\n");
@@ -2365,7 +2317,7 @@ sub remove_group {
 
 =over 4
 
-=item C<remove_entry_from_group($parm_ref);>
+=item C<remove_entry_from_group({ -group =E<gt> $group, -key =E<gt> $key, -index =E<gt> $index });>
 
 Remove a specific key<->index entry from the map for a group.
 
@@ -2381,21 +2333,8 @@ only the entries mapping the two to each other.
 sub remove_entry_from_group {
 	my $self = shift;
 
-    my ($parm_ref) = {};
-    if ($#_ == 0) {
-        $parm_ref  = shift;
-    } elsif ($#_ > 0) {
-        %$parm_ref = @_;
-    }
-	my $parms = Class::ParmList->new ({ -parms => $parm_ref,
-                                     -required => ['-group','-key','-index'],
-                                     });
-    if (not defined $parms) {
-    	my $error_message = Class::ParmList->error;
-		croak (__PACKAGE__ . "::remove_entry_from_group() - $error_message\n");
-    }
+	my ($group,$key,$index) = simple_parms(['-group','-key','-index'],@_);
 
-	my ($group,$key,$index) = $parms->get(qw(-group -key -index));
 	my ($db) = $self->get(-database);
 	if (not $db) {
 		croak (__PACKAGE__ . "::remove_entry_from_group() - No database opened for use\n");
@@ -2421,18 +2360,18 @@ sub remove_entry_from_group {
 
 	# Delete the index_enum from the list of index_enums for this key_enum
 	my $keyed_record  = $db->get({ -key => "$GROUP_ENUM_DATA${group_enum}$KEYED_INDEX_LIST$key_enum" });
-	my $keyed_indexes = $self->_unpack_list($keyed_record);
+	my $keyed_indexes = _unpack_list($keyed_record);
 	delete $keyed_indexes->{$index_enum};
-	$keyed_record = $self->_pack_list($keyed_indexes);
+	$keyed_record = _pack_list($keyed_indexes);
 	if (not $db->put({ -key => "$GROUP_ENUM_DATA${group_enum}$KEYED_INDEX_LIST$key_enum", -value => $keyed_record })) {
 		croak (__PACKAGE__ . "::remove_entry_from_group() - Failed to save updated '$GROUP_ENUM_DATA${group_enum}$KEYED_INDEX_LIST$key_enum' -> (list of ranked indexes)\n");
 	}
 
 	# Delete the key_enum from the list of key_enums for this index_enum
 	my $indexed_record  = $db->get({ -key => "$GROUP_ENUM_DATA${group_enum}$INDEXED_KEY_LIST$index_enum" });
-	my $indexed_keys = $self->_unpack_list($indexed_record);
+	my $indexed_keys = _unpack_list($indexed_record);
 	delete $indexed_keys->{$key_enum};
-	$indexed_record = $self->_pack_list($indexed_keys);
+	$indexed_record = _pack_list($indexed_keys);
 	if (not $db->put({ -key => "$GROUP_ENUM_DATA${group_enum}$INDEXED_KEY_LIST$index_enum", -value => $keyed_record })) {
 		croak (__PACKAGE__ . "::remove_entry_from_group() - Failed to save updated '$GROUP_ENUM_DATA${group_enum}$INDEXED_KEY_LIST$key_enum' -> (list of ranked keys)\n");
 	}
@@ -2447,14 +2386,14 @@ sub remove_entry_from_group {
 
 =over 4
 
-=item C<remove_index_from_group ($parm_ref);>
+=item C<remove_index_from_group ({ -group =E<gt> $group, -index =E<gt> $index });>
 
 Remove all references to a specific index for all keys for a group.
 
 Example: $inv_map->_remove_index_from_group({ -group => $group, -index => $index });
 
 Note: This *does not* remove the index from the _system_ - just a specific
-      group.
+	  group.
 
 It is a null operation to remove an undeclared index or to remove a
 declared index from a group where it is not used.
@@ -2466,25 +2405,11 @@ declared index from a group where it is not used.
 sub remove_index_from_group {
 	my $self = shift;
 
-    my ($parm_ref) = {};
-    if ($#_ == 0) {
-        $parm_ref  = shift;
-    } elsif ($#_ > 0) {
-        %$parm_ref = @_;
-    }
-	my $parms = Class::ParmList->new ({ -parms => $parm_ref,
-                                     -required => ['-group','-index'],
-                                    });
-    if (not defined $parms) {
-    	my $error_message = Class::ParmList->error;
-		croak (__PACKAGE__ . "::remove_index_from_group() - $error_message\n");
-    }
-	my ($group,$index) = $parms->get(qw(-group -index));
+	my ($group,$index) = simple_parms(['-group','-index'],@_);
 	my ($db)           = $self->get(-database);
 	if (not $db) {
 		croak (__PACKAGE__ . "::remove_index_from_group() - No database opened for use\n");
 	}
-	my $null_enum      = '-' x 12;
 
 	# Get the group_enum for this group
 	my $group_enum = $db->get({ -key => "$GROUP$group" });
@@ -2499,16 +2424,16 @@ sub remove_index_from_group {
 	# Get the group chain entry for this index
 	my ($index_chain_entry) = $db->get({ -key => "$GROUP_ENUM_DATA$group_enum$INDEX_ENUM_GROUP_CHAIN$index_enum" });
 
-    # If we did not find a matching index entry for removal - bail: There is nothing we need to do.
+	# If we did not find a matching index entry for removal - bail: There is nothing we need to do.
 	return unless (defined $index_chain_entry);
 
 	# Remove the index from the INDEXED_KEY_LIST
 	my ($indexed_key_list_record) = $db->get({ -key => "$GROUP_ENUM_DATA$group_enum$INDEXED_KEY_LIST$index_enum" });
 
-    # If there was no match for the index, bail - there is nothing to do.
-    return unless (defined $indexed_key_list_record);
+	# If there was no match for the index, bail - there is nothing to do.
+	return unless (defined $indexed_key_list_record);
 
-	my ($key_enum_data) = $self->_unpack_list($indexed_key_list_record);
+	my ($key_enum_data) = _unpack_list($indexed_key_list_record);
 	my @key_enums = keys %$key_enum_data;
 	my @zeroed_key_enums = ();
 	# Remove the index from the appropriate KEYED_INDEX_LISTs
@@ -2517,9 +2442,9 @@ sub remove_index_from_group {
 		if (not defined $keyed_index_list_record) {
 			croak (__PACKAGE__ . "::remove_index_from_group() - Corrupted database. Unable to find '$GROUP_ENUM_DATA$group_enum$KEYED_INDEX_LIST$key_enum' record\n");
 		}
-		my ($index_enum_data) = $self->_unpack_list($keyed_index_list_record);
+		my ($index_enum_data) = _unpack_list($keyed_index_list_record);
 		delete $index_enum_data->{$index_enum};
-		$keyed_index_list_record = $self->_pack_list($index_enum_data);
+		$keyed_index_list_record = _pack_list($index_enum_data);
 		if (not $db->put({ -key => "$GROUP_ENUM_DATA$group_enum$KEYED_INDEX_LIST$key_enum",
 						 -value => $keyed_index_list_record})) {
 			croak (__PACKAGE__ . "::remove_index_from_group() - Unable to save updated '$GROUP_ENUM_DATA$group_enum$KEYED_INDEX_LIST$key_enum' record\n");
@@ -2533,29 +2458,29 @@ sub remove_index_from_group {
 	if (not (defined ($prev_index_enum) and defined ($next_index_enum))) {
 		croak (__PACKAGE__ . "::remove_index_from_group() - Corrupted database. Unable to parse 'GROUP_ENUM_DATA$group_enum$INDEX_ENUM_GROUP_CHAIN$index_enum' record for group '$group'\n");
 	}
-	
+
 	# Point the 'next' for the previous index_eum to the next index_enum in the chain
-	if ($prev_index_enum ne $null_enum) {
+	if ($prev_index_enum ne $NULL_ENUM) {
 		my ($prev_index_chain_entry) = $db->get({ -key => "$GROUP_ENUM_DATA$group_enum$INDEX_ENUM_GROUP_CHAIN$prev_index_enum" });
 		if (not defined $index_chain_entry) {
 			croak (__PACKAGE__ . "::remove_index_from_group() - Corrupted database. Unable to locate 'GROUP_ENUM_DATA$group_enum$INDEX_ENUM_GROUP_CHAIN$prev_index_enum' record for group '$group'\n");
 		}
 		$prev_index_chain_entry =~ s/^(.{12}) (.{12})/$1 $next_index_enum/;
 		if (not $db->put({ -key => "$GROUP_ENUM_DATA$group_enum$INDEX_ENUM_GROUP_CHAIN$prev_index_enum",
-		                 -value => $prev_index_chain_entry })) {
+						 -value => $prev_index_chain_entry })) {
 			croak (__PACKAGE__ . "::remove_index_from_group() - Unable to save updated '$GROUP_ENUM_DATA$group_enum$INDEX_ENUM_GROUP_CHAIN$prev_index_enum' record ($prev_index_chain_entry) for group '$group'\n");
 		}
 	}
 
 	# Point the 'prev' for the next index_eum to the previous index_enum in the chain
-	if ($next_index_enum ne $null_enum) {
+	if ($next_index_enum ne $NULL_ENUM) {
 		my ($next_index_chain_entry) = $db->get({ -key => "$GROUP_ENUM_DATA$group_enum$INDEX_ENUM_GROUP_CHAIN$next_index_enum" });
 		if (not defined $index_chain_entry) {
 			croak (__PACKAGE__ . "::remove_index_from_group() - Corrupted database. Unable to locate 'GROUP_ENUM_DATA$group_enum$INDEX_ENUM_GROUP_CHAIN$next_index_enum' record for group '$group'\n");
 		}
 		$next_index_chain_entry =~ s/^(.{12})/$prev_index_enum/;
 		if (not $db->put({ -key => "$GROUP_ENUM_DATA$group_enum$INDEX_ENUM_GROUP_CHAIN$next_index_enum",
-		                 -value => $next_index_chain_entry })) {
+						 -value => $next_index_chain_entry })) {
 			croak (__PACKAGE__ . "::remove_index_from_group() - Unable to save updated '$GROUP_ENUM_DATA$group_enum$INDEX_ENUM_GROUP_CHAIN$next_index_enum' record ($next_index_chain_entry) for group '$group'\n");
 		}
 	}
@@ -2567,7 +2492,7 @@ sub remove_index_from_group {
 	}
 	if ($first_index_enum eq $index_enum) {
 		if (not $db->put({ -key => "$GROUP_ENUM_DATA${group_enum}_first_index_enum",
-                         -value => $next_index_enum })) {
+						 -value => $next_index_enum })) {
 			croak (__PACKAGE__ . "::remove_index_from_group() - Unable to update '$GROUP_ENUM_DATA${group_enum}_first_index_enum' record to '$next_index_enum'\n")
 		}
 	}
@@ -2601,14 +2526,14 @@ sub remove_index_from_group {
 	# We don't want the cache returning old info after an update
 	$self->clear_cache;
 
-	1;
+	return 1;
 }
 
 ####################################################################
 
 =over 4
 
-=item C<remove_index_from_all ($parm_ref);>
+=item C<remove_index_from_all ({ -index =E<gt> $index });>
 
 Remove all references to a specific index from the system.
 
@@ -2626,21 +2551,7 @@ It is a null operation to remove an undefined index.
 sub remove_index_from_all {
 	my $self = shift;
 
-    my ($parm_ref) = {};
-    if ($#_ == 0) {
-        $parm_ref  = shift;
-    } elsif ($#_ > 0) {
-        %$parm_ref = @_;
-    }
-	my $parms = Class::ParmList->new ({ -parms => $parm_ref,
-                                     -required => ['-index'],
-                                     -defaults => {},
-                                     });
-    if (not defined $parms) {
-    	my $error_message = Class::ParmList->error;
-		croak (__PACKAGE__ . "::remove_index_from_all() - $error_message\n");
-    }
-	my ($index) = $parms->get('-index');
+	my ($index) = simple_parms(['-index'],@_);
 	my ($db)    = $self->get(-database);
 	if (not $db) {
 		croak (__PACKAGE__ . "::remove_index_from_all() - No database opened for use\n");
@@ -2648,15 +2559,12 @@ sub remove_index_from_all {
 	my ($index_enum) = $db->get({ -key => "$INDEX$index" });
 	return if (not defined $index_enum);
 
-	my ($null_enum) = '-' x 12;
-
 	# Remove index entries from all groups
 	my ($first_group_enum) = $db->get({ -key => "${GROUP_ENUM}first_group_enum" });
 
 	if (defined $first_group_enum) {
 		my $group_enum = $first_group_enum;
-		my $null_enum  = '-' x 12;
-		while ($group_enum ne $null_enum) {
+		while ($group_enum ne $NULL_ENUM) {
 			my ($group_record) = $db->get({ -key => "${GROUP_ENUM}$group_enum" });
 			if (not defined $group_record) {
 				croak (__PACKAGE__ . "::remove_index_from_all() - Database corrupt. Unable to locate '${GROUP_ENUM}$group_enum' record for system.\n");
@@ -2676,27 +2584,27 @@ sub remove_index_from_all {
 	if (not (defined ($prev_index_enum) and defined ($next_index_enum))) {
 		croak (__PACKAGE__ . "::remove_index_from_all() - Corrupt database. Unable to parse '$INDEX_ENUM$index_enum' record\n");
 	}
-	
-	if ($prev_index_enum ne $null_enum) {
+
+	if ($prev_index_enum ne $NULL_ENUM) {
 		my ($prev_index_chain_entry) = $db->get({ -key => "$INDEX_ENUM$prev_index_enum" });
 		if (not defined $prev_index_chain_entry) {
 			croak (__PACKAGE__ . "::remove_index_from_all() - Corrupt database. Unable to locate '$INDEX_ENUM$prev_index_enum' record\n");
 		}
 		$prev_index_chain_entry =~ s/^(.{12}) (.{12})/$1 $next_index_enum/;
 		if (not $db->put({ -key => "$INDEX_ENUM$prev_index_enum",
-		                 -value => $prev_index_chain_entry })) {
+						 -value => $prev_index_chain_entry })) {
 			croak (__PACKAGE__ . "::remove_index_from_all() - Unable to save updated '$INDEX_ENUM$prev_index_enum' record ($prev_index_chain_entry)\n");
 		}
 	}
 
-	if ($next_index_enum ne $null_enum) {
+	if ($next_index_enum ne $NULL_ENUM) {
 		my ($next_index_chain_entry) = $db->get({ -key => "$INDEX_ENUM$next_index_enum" });
 		if (not defined $next_index_chain_entry) {
 			croak (__PACKAGE__ . "::remove_index_from_all() - Corrupt database. Unable to locate '$INDEX_ENUM$next_index_enum' record\n");
 		}
 		$next_index_chain_entry =~ s/^(.{12})/$prev_index_enum/;
 		if (not $db->put({ -key => "$INDEX_ENUM$next_index_enum",
-		                 -value => $next_index_chain_entry })) {
+						 -value => $next_index_chain_entry })) {
 			croak (__PACKAGE__ . "::remove_index_from_all() - Unable to save updated '$INDEX_ENUM$next_index_enum' record ($next_index_chain_entry)\n");
 		}
 	}
@@ -2708,7 +2616,7 @@ sub remove_index_from_all {
 	}
 	if ($first_index_enum eq $index_enum) {
 		if (not $db->put({ -key => "${INDEX_ENUM}first_index_enum",
-                         -value => $next_index_enum })) {
+						 -value => $next_index_enum })) {
 			croak (__PACKAGE__ . "::remove_index_from_all() - Unable to update '${INDEX_ENUM}first_index_enum' record to '$next_index_enum'\n")
 		}
 	}
@@ -2740,7 +2648,7 @@ sub remove_index_from_all {
 
 	# If there are no more indexes, clear out the
 	# ${INDEX_ENUM}_first_index_enum
-    # index_enum_counter and number_of_indexes
+	# index_enum_counter and number_of_indexes
 	if ($number_of_indexes == 0) {
 		if (not $db->delete({ -key => "${INDEX_ENUM}first_index_enum" })) {
 			croak (__PACKAGE__ . "::remove_index_from_all() - Unable to delete '${INDEX_ENUM}first_index_enum' record\n");
@@ -2763,7 +2671,7 @@ sub remove_index_from_all {
 
 =over 4
 
-=item C<remove_key_from_group($parm_ref);>
+=item C<remove_key_from_group({ -group =E<gt> $group, -key =E<gt> $key });>
 
 Remove all references to a specific key for all indexes for a group.
 
@@ -2771,7 +2679,7 @@ Example: $inv_map->remove({ -group => $group, -key => $key });
 
 Returns undef if the key speced was not even in database.
 Returns '1' if the key speced was in the database, and has
-            been successfully deleted.
+			been successfully deleted.
 
 croaks on errors.
 
@@ -2782,31 +2690,16 @@ croaks on errors.
 sub remove_key_from_group {
 	my $self = shift;
 
-    my ($parm_ref) = {};
-    if ($#_ == 0) {
-        $parm_ref  = shift;
-    } elsif ($#_ > 0) {
-        %$parm_ref = @_;
-    }
-    my $parms = Class::ParmList->new ({ -parms => $parm_ref,
-                                     -required => ['-group', '-key'],
-                                    });
-    if (not defined $parms) {
-    	my $error_message = Class::ParmList->error;
-		croak (__PACKAGE__ . "::remove_key_from_group() - $error_message\n");
-    }
-
-	my ($group,$key) = $parms->get(qw(-group -key));
+	my ($group,$key) = simple_parms(['-group','-key'],@_);
 	my ($db)         = $self->get(-database);
 	if (not $db) {
 		croak (__PACKAGE__ . "::remove_key_from_group() - No database opened for use\n");
 	}
-	my $null_enum    = '-' x 12;
 
 	# Get the group_enum for this group
 	my $group_enum = $db->get({ -key => "$GROUP$group" });
 	if (not defined $group_enum) {
-		croak(__PACKAGE__ . "::remove_key_from_group() - Atkeyted to remove an key from an undeclared -group '$group'\n");
+		croak(__PACKAGE__ . "::remove_key_from_group() - Attempted to remove an key from an undeclared -group '$group'\n");
 	}
 
 	# Get the key_enum for this key
@@ -2817,7 +2710,7 @@ sub remove_key_from_group {
 	my ($keyed_index_list_record) = $db->get({ -key => "$GROUP_ENUM_DATA$group_enum$KEYED_INDEX_LIST$key_enum" });
 	my $index_enum_data = {};
 	if (defined $keyed_index_list_record) {
-		$index_enum_data = $self->_unpack_list($keyed_index_list_record);
+		$index_enum_data = _unpack_list($keyed_index_list_record);
 	}
 	my @index_enums = keys %$index_enum_data;
 	my @zeroed_index_enums = ();
@@ -2827,11 +2720,11 @@ sub remove_key_from_group {
 		if (not defined $indexed_key_list_record) {
 			croak (__PACKAGE__ . "::remove_key_from_group() - Corrupted database. Unable to find '$GROUP_ENUM_DATA$group_enum$INDEXED_KEY_LIST' record\n");
 		}
-		my ($key_enum_data) = $self->_unpack_list($indexed_key_list_record);
+		my ($key_enum_data) = _unpack_list($indexed_key_list_record);
 		delete $key_enum_data->{$key_enum};
-		$indexed_key_list_record = $self->_pack_list($key_enum_data);
+		$indexed_key_list_record = _pack_list($key_enum_data);
 		if (not $db->put({ -key => "$GROUP_ENUM_DATA$group_enum$INDEXED_KEY_LIST$index_enum",
-		                 -value => $indexed_key_list_record })) {
+						 -value => $indexed_key_list_record })) {
 			croak (__PACKAGE__ . "::remove_key_from_group() - Unable to save updated '$GROUP_ENUM_DATA$group_enum$INDEXED_KEY_LIST' record\n");
 		}
 		push(@zeroed_index_enums,$index_enum) if (length ($indexed_key_list_record) == 0);
@@ -2849,27 +2742,27 @@ sub remove_key_from_group {
 	if (not (defined ($prev_key_enum) and defined ($next_key_enum))) {
 		croak (__PACKAGE__ . "::remove_key_from_group() - Corrupt database. Unable to parse 'GROUP_ENUM_DATA$group_enum$KEY_ENUM_TO_KEY_AND_CHAIN$key_enum' record ($key_chain_entry) for group '$group'\n");
 	}
-	
-	if ($prev_key_enum ne $null_enum) {
+
+	if ($prev_key_enum ne $NULL_ENUM) {
 		my ($prev_key_chain_entry) = $db->get({ -key => "$GROUP_ENUM_DATA$group_enum$KEY_ENUM_TO_KEY_AND_CHAIN$prev_key_enum" });
 		if (not defined $key_chain_entry) {
 			croak (__PACKAGE__ . "::remove_key_from_group() - Corrupt database. Unable to locate 'GROUP_ENUM_DATA$group_enum$KEY_ENUM_TO_KEY_AND_CHAIN$prev_key_enum' record for group '$group'\n");
 		}
 		$prev_key_chain_entry =~ s/^(.{12}) (.{12})/$1 $next_key_enum/;
 		if (not $db->put({ -key => "$GROUP_ENUM_DATA$group_enum$KEY_ENUM_TO_KEY_AND_CHAIN$prev_key_enum",
-		                 -value => $prev_key_chain_entry })) {
+						 -value => $prev_key_chain_entry })) {
 			croak (__PACKAGE__ . "::remove_key_from_group() - Unable to save updated '$GROUP_ENUM_DATA$group_enum$KEY_ENUM_TO_KEY_AND_CHAIN$prev_key_enum' record ($prev_key_chain_entry) for group '$group'\n");
 		}
 	}
 
-	if ($next_key_enum ne $null_enum) {
+	if ($next_key_enum ne $NULL_ENUM) {
 		my ($next_key_chain_entry) = $db->get({ -key => "$GROUP_ENUM_DATA$group_enum$KEY_ENUM_TO_KEY_AND_CHAIN$next_key_enum" });
 		if (not defined $key_chain_entry) {
 			croak (__PACKAGE__ . "::remove_key_from_group() - Corrupt database. Unable to locate 'GROUP_ENUM_DATA$group_enum$KEY_ENUM_TO_KEY_AND_CHAIN$next_key_enum' record for group '$group'\n");
 		}
 		$next_key_chain_entry =~ s/^(.{12})/$prev_key_enum/;
 		if (not $db->put({ -key => "$GROUP_ENUM_DATA$group_enum$KEY_ENUM_TO_KEY_AND_CHAIN$next_key_enum",
-		                 -value => $next_key_chain_entry })) {
+						 -value => $next_key_chain_entry })) {
 			croak (__PACKAGE__ . "::remove_key_from_group() - Unable to save updated '$GROUP_ENUM_DATA$group_enum$KEY_ENUM_TO_KEY_AND_CHAIN$next_key_enum' record ($next_key_chain_entry) for group '$group'\n");
 		}
 	}
@@ -2881,7 +2774,7 @@ sub remove_key_from_group {
 	}
 	if ($first_key_enum eq $key_enum) {
 		if (not $db->put({ -key => "$GROUP_ENUM_DATA${group_enum}_first_key_enum",
-                         -value => $next_key_enum })) {
+						 -value => $next_key_enum })) {
 			croak (__PACKAGE__ . "::remove_key_from_group() - Unable to update '$GROUP_ENUM_DATA${group_enum}_first_key_enum' record to '$next_key_enum'\n")
 		}
 	}
@@ -2937,7 +2830,7 @@ sub remove_key_from_group {
 
 =over 4
 
-=item C<list_all_keys_in_group($parm_ref);>
+=item C<list_all_keys_in_group({ -group =E<gt> $group });>
 
 Returns an anonymous array containing a list of all
 defined keys in the specified group.
@@ -2947,8 +2840,7 @@ Example:
 
 Note: This can result in *HUGE* returned lists. If you have a
 lot of records in the group, you are better off using the
-iteration support ('first_key_in_group',
-'next_key_in_group').
+iteration support ('first_key_in_group', 'next_key_in_group').
 
 =back
 
@@ -2957,26 +2849,11 @@ iteration support ('first_key_in_group',
 sub list_all_keys_in_group {
 	my $self = shift;
 
-    my ($parm_ref) = {};
-    if ($#_ == 0) {
-        $parm_ref  = shift;
-    } elsif ($#_ > 0) {
-        %$parm_ref = @_;
-    }
-    my $parms = Class::ParmList->new ({ -parms => $parm_ref,
-                                     -required => ['-group'],
-									 -defaults => {},
-                                   });
-    if (not defined $parms) {
-    	my $error_message = Class::ParmList->error;
-		croak (__PACKAGE__ . "::list_all_keys_in_group() - $error_message\n");
-    }
-	my ($group)      = $parms->get(-group);
-	my ($db)         = $self->get(-database);
+	my ($group) = simple_parms(['-group'],@_);
+	my ($db)    = $self->get(-database);
 	if (not $db) {
 		croak (__PACKAGE__ . "::list_all_keys_in_group() - No database opened for use\n");
 	}
-	my ($null_enum)  = '-' x 12;
 	my ($group_enum) = $db->get({ -key => "$GROUP$group" });
 	if (not defined $group_enum) {
 		croak (__PACKAGE__ . "::list_all_keys_in_group() - Attempted to list keys for an undeclared -group: '$group'\n");
@@ -2984,7 +2861,7 @@ sub list_all_keys_in_group {
 	my ($first_key_enum) = $db->get({ -key => "$GROUP_ENUM_DATA${group_enum}_first_key_enum" });
 	my ($keys) = [];
 	my $key_enum = $first_key_enum;
-	while ($key_enum ne $null_enum) {
+	while ($key_enum ne $NULL_ENUM) {
 		my ($key_record) = $db->get({ -key => "$GROUP_ENUM_DATA$group_enum$KEY_ENUM_TO_KEY_AND_CHAIN$key_enum" });
 		if (not defined $key_record) {
 			croak (__PACKAGE__ . "::list_all_keys_in_group() - Corrupt database. Unable to locate '$GROUP_ENUM_DATA$group_enum$KEY_ENUM_TO_KEY_AND_CHAIN$key_enum' record in group '$group'\n");
@@ -2996,14 +2873,14 @@ sub list_all_keys_in_group {
 		push (@$keys,$key);
 		$key_enum = $next_key_enum;
 	}
-	$keys;
+	return $keys;
 }
 
 ####################################################################
 
 =over 4
 
-=item C<first_key_in_group($parm_ref);>
+=item C<first_key_in_group({ -group =E<gt> $group_name });>
 
 Returns the 'first' key in the -group based on hash ordering.
 
@@ -3018,20 +2895,7 @@ Example: my $first_key = $inv_map->first_key_in_group({-group => $group});
 sub first_key_in_group {
 	my $self = shift;
 
-    my ($parm_ref) = {};
-    if ($#_ == 0) {
-        $parm_ref  = shift;
-    } elsif ($#_ > 0) {
-        %$parm_ref = @_;
-    }
-    my $parms = Class::ParmList->new ({ -parms => $parm_ref,
-                                     -required => ['-group'],
-                                   });
-    if (not defined $parms) {
-    	my $error_message = Class::ParmList->error;
-		croak (__PACKAGE__ . "::first_key_in_group() - $error_message\n");
-    }
-	my ($group) = $parms->get(-group);
+	my ($group) = simple_parms(['-group'],@_);
 	my ($db)    = $self->get(-database);
 	if (not $db) {
 		croak (__PACKAGE__ . "::first_key_in_group() - No database opened for use\n");
@@ -3040,7 +2904,10 @@ sub first_key_in_group {
 	if (not defined $group_enum) {
 		croak (__PACKAGE__ . "::first_key_in_group() - Attempted to list keys for an undeclared -group: '$group'\n");
 	}
+
 	my ($first_key_enum) = $db->get({ -key => "$GROUP_ENUM_DATA${group_enum}_first_key_enum" });
+	return if ($first_key_enum eq $NULL_ENUM);
+
 	my ($key_record) = $db->get({ -key => "$GROUP_ENUM_DATA$group_enum$KEY_ENUM_TO_KEY_AND_CHAIN$first_key_enum" });
 	if (not defined $key_record) {
 		croak (__PACKAGE__ . "::first_key_in_group() - Corrupt database. Unable to locate '$GROUP_ENUM_DATA$group_enum$KEY_ENUM_TO_KEY_AND_CHAIN$first_key_enum' record in group '$group'\n");
@@ -3049,14 +2916,14 @@ sub first_key_in_group {
 	if (not defined $key) {
 		croak (__PACKAGE__ . "::first_key_in_group() - Corrupt database. Unable to parse '$GROUP_ENUM_DATA$group_enum$KEY_ENUM_TO_KEY_AND_CHAIN$first_key_enum' record in group '$group'\n");
 	}
-	$key;
+	return $key;
 }
 
 ####################################################################
 
 =over 4
 
-=item C<next_key_in_group($parm_ref);>
+=item C<next_key_in_group({ -group =E<gt> $group, -key =E<gt> $key });>
 
 Returns the 'next' key in the group based on hash ordering.
 
@@ -3072,25 +2939,11 @@ Example: my $next_key = $inv_map->next_key_in_group({ -group => $group, -key => 
 sub next_key_in_group {
 	my $self = shift;
 
-    my ($parm_ref) = {};
-    if ($#_ == 0) {
-        $parm_ref  = shift;
-    } elsif ($#_ > 0) {
-        %$parm_ref = @_;
-    }
-    my $parms = Class::ParmList->new ({ -parms => $parm_ref,
-                                     -required => ['-group', '-key'],
-                                   });
-    if (not defined $parms) {
-    	my $error_message = Class::ParmList->error;
-		croak (__PACKAGE__ . "::next_key_in_group() - $error_message\n");
-    }
-	my ($group,$key) = $parms->get(-group,-key);
+	my ($group,$key) = simple_parms(['-group','-key'],@_);
 	my ($db)         = $self->get(-database);
 	if (not $db) {
 		croak (__PACKAGE__ . "::next_key_in_group() - No database opened for use\n");
 	}
-	my ($null_enum)  = '-' x 12;
 	my ($group_enum) = $db->get({ -key => "$GROUP$group" });
 	if (not defined $group_enum) {
 		croak (__PACKAGE__ . "::next_key_in_group() - Attempted to list keys for an undeclared -group: '$group'\n");
@@ -3105,7 +2958,7 @@ sub next_key_in_group {
 	if (not defined $this_key) {
 		croak (__PACKAGE__ . "::next_key_in_group() - Corrupt database. Unable to parse '$GROUP_ENUM_DATA$group_enum$KEY_ENUM_TO_KEY_AND_CHAIN$key_enum' record in group '$group'\n");
 	}
-	return if ($next_key_enum eq $null_enum); # No next key
+	return if ($next_key_enum eq $NULL_ENUM); # No next key
 	my ($next_key_record) = $db->get({ -key => "$GROUP_ENUM_DATA$group_enum$KEY_ENUM_TO_KEY_AND_CHAIN$next_key_enum" });
 	if (not defined $next_key_record) {
 		croak (__PACKAGE__ . "::next_key_in_group() - Corrupt database. Unable to locate '$GROUP_ENUM_DATA$group_enum$KEY_ENUM_TO_KEY_AND_CHAIN$next_key_enum' record in group '$group'\n");
@@ -3121,7 +2974,7 @@ sub next_key_in_group {
 
 =over 4
 
-=item C<list_all_indexes_in_group($parm_ref);>
+=item C<list_all_indexes_in_group({ -group =E<gt> $group });>
 
 Returns an anonymous array containing a list of all
 defined indexes in the group
@@ -3139,34 +2992,20 @@ iteration support (first_index_in_group(), next_index_in_group())
 sub list_all_indexes_in_group {
 	my $self = shift;
 
-    my ($parm_ref) = {};
-    if ($#_ == 0) {
-        $parm_ref  = shift;
-    } elsif ($#_ > 0) {
-        %$parm_ref = @_;
-    }
-	my $parms = Class::ParmList->new ({ -parms => $parm_ref,
-                                     -required => ['-group'],
-                                   });
-    if (not defined $parms) {
-    	my $error_message = Class::ParmList->error;
-		croak (__PACKAGE__ . "::list_all_indexes_in_group() - $error_message\n");
-    }
-	my ($group)      = $parms->get(-group);
-	my ($db)         = $self->get(-database);
+	my ($group) = simple_parms(['-group'],@_);
+	my ($db)    = $self->get(-database);
 	if (not $db) {
 		croak (__PACKAGE__ . "::list_all_indexes_in_group() - No database opened for use\n");
 	}
-	my ($null_enum)  = '-' x 12;
 	my ($group_enum) = $db->get({ -key => "$GROUP$group" });
 	if (not defined $group_enum) {
 		croak (__PACKAGE__ . "::list_all_indexes_in_group() - Attempted to list indexes for an undeclared -group: '$group'\n");
 	}
 	my ($first_index_enum) = $db->get({ -key => "$GROUP_ENUM_DATA${group_enum}_first_index_enum" });
 	my ($indexes) = [];
-	return $indexes if ((not defined $first_index_enum) or ($first_index_enum eq $null_enum));
+	return $indexes if ((not defined $first_index_enum) or ($first_index_enum eq $NULL_ENUM));
 	my $index_enum = $first_index_enum;
-	while ($index_enum ne $null_enum) {
+	while ($index_enum ne $NULL_ENUM) {
 		my ($group_index_record) = $db->get({ -key => "$GROUP_ENUM_DATA$group_enum$INDEX_ENUM_GROUP_CHAIN$index_enum" });
 		if (not defined $group_index_record) {
 			croak (__PACKAGE__ . "::list_all_indexes_in_group() - Corrupt database. Unable to locate '$GROUP_ENUM_DATA$group_enum$INDEX_ENUM_GROUP_CHAIN$index_enum' record in group '$group'\n");
@@ -3183,7 +3022,7 @@ sub list_all_indexes_in_group {
 		push (@$indexes,$index);
 		$index_enum = $next_group_index_enum;
 	}
-	$indexes;
+	return $indexes;
 }
 
 ####################################################################
@@ -3204,31 +3043,18 @@ Example: my $first_index = $inv_map->first_index_in_group({ -group => $group });
 sub first_index_in_group {
 	my $self = shift;
 
-    my ($parm_ref) = {};
-    if ($#_ == 0) {
-        $parm_ref  = shift;
-    } elsif ($#_ > 0) {
-        %$parm_ref = @_;
-    }
-    my $parms = Class::ParmList->new ({ -parms => $parm_ref,
-                                     -required => ['-group'],
-                                   });
-    if (not defined $parms) {
-    	my $error_message = Class::ParmList->error;
-		croak (__PACKAGE__ . "::list_all_keys_in_group() - $error_message\n");
-    }
-	my ($group)      = $parms->get(-group);
-	my ($db)         = $self->get(-database);
+	my ($group) = simple_parms(['-group'],@_);
+	my ($db)    = $self->get(-database);
 	if (not $db) {
 		croak (__PACKAGE__ . "::first_index_in_group() - No database opened for use\n");
 	}
-	my ($null_enum)  = '-' x 12;
 	my ($group_enum) = $db->get({ -key => "$GROUP$group" });
 	if (not defined $group_enum) {
 		croak (__PACKAGE__ . "::list_all_indexes_in_group() - Attempted to list indexes for an undeclared -group: '$group'\n");
 	}
 	my ($first_index_enum) = $db->get({ -key => "$GROUP_ENUM_DATA${group_enum}_first_index_enum" });
-	return if ($first_index_enum eq $null_enum);
+	return if ($first_index_enum eq $NULL_ENUM);
+
 	my ($indexes) = [];
 	my $index_enum = $first_index_enum;
 	my ($system_index_record) = $db->get({ -key => "$INDEX_ENUM$index_enum" });
@@ -3237,7 +3063,7 @@ sub first_index_in_group {
 	}
 	my ($prev_system_index_enum, $next_system_index_enum, $index) = $system_index_record =~ m/^(.{12}) (.{12}) (.*)$/s;
 	return if (not defined $index);
-	$index;
+	return $index;
 }
 
 ####################################################################
@@ -3258,25 +3084,11 @@ Example: my $next_index = $inv_map->next_index_in_group({-group => group, -index
 sub next_index_in_group {
 	my $self = shift;
 
-    my ($parm_ref) = {};
-    if ($#_ == 0) {
-        $parm_ref  = shift;
-    } elsif ($#_ > 0) {
-        %$parm_ref = @_;
-    }
-    my $parms = Class::ParmList->new ({ -parms => $parm_ref,
-                                     -required => ['-group','-index'],
-                                   });
-    if (not defined $parms) {
-    	my $error_message = Class::ParmList->error;
-		croak (__PACKAGE__ . "::next_index_in_group() - $error_message\n");
-    }
-	my ($group,$index) = $parms->get(qw(-group -index));
-	my ($db)         = $self->get(-database);
+	my ($group,$index) = simple_parms(['-group','-index'],@_);
+	my ($db)           = $self->get(-database);
 	if (not $db) {
 		croak (__PACKAGE__ . "::next_index_in_group() - No database opened for use\n");
 	}
-	my ($null_enum)  = '-' x 12;
 	my ($group_enum) = $db->get({ -key => "$GROUP$group" });
 	if (not defined $group_enum) {
 		croak (__PACKAGE__ . "::next_index_in_group() - Attempted to list indexes for an undeclared -group: '$group'\n");
@@ -3289,7 +3101,7 @@ sub next_index_in_group {
 	if (not defined $prev_index_enum) {
 		croak (__PACKAGE__ . "::next_index_in_group() - Corrupt database. Unable to parse '$GROUP_ENUM_DATA$group_enum$INDEX_ENUM_GROUP_CHAIN$index_enum' record in group '$group'\n");
 	}
-	return if ($next_index_enum eq $null_enum); # No next index
+	return if ($next_index_enum eq $NULL_ENUM); # No next index
 	my ($next_index_record) = $db->get({ -key => "$INDEX_ENUM$next_index_enum" });
 	if (not defined $next_index_record) {
 		croak (__PACKAGE__ . "::next_index_in_group() - Corrupt database. Unable to locate '$GROUP_ENUM_DATA$group_enum$INDEX_ENUM_GROUP_CHAIN$next_index_enum' record in group '$group'\n");
@@ -3328,12 +3140,11 @@ sub list_all_indexes {
 	if (not $db) {
 		croak (__PACKAGE__ . "::list_all_indexes() - No database opened for use\n");
 	}
-	my ($null_enum)  = '-' x 12;
 	my ($first_index_enum) = $db->get({ -key => "${INDEX_ENUM}first_index_enum" });
 	my ($indexes) = [];
-	return $indexes if ((not defined $first_index_enum) or ($first_index_enum eq $null_enum));
+	return $indexes if ((not defined $first_index_enum) or ($first_index_enum eq $NULL_ENUM));
 	my $index_enum = $first_index_enum;
-	while ($index_enum ne $null_enum) {
+	while ($index_enum ne $NULL_ENUM) {
 		my ($index_record) = $db->get({ -key => "$INDEX_ENUM$index_enum" });
 		if (not defined $index_record) {
 			croak (__PACKAGE__ . "::list_all_indexes - Corrupt database. Unable to locate '$INDEX_ENUM$index_enum' record\n");
@@ -3367,9 +3178,10 @@ sub first_index {
 	if (not $db) {
 		croak (__PACKAGE__ . "::first_index() - No database opened for use\n");
 	}
-	my ($null_enum)  = '-' x 12;
+
 	my ($first_index_enum) = $db->get({ -key => "${INDEX_ENUM}first_index_enum" });
-	return if ($first_index_enum eq $null_enum);
+	return if ($first_index_enum eq $NULL_ENUM);
+
 	my ($index_record) = $db->get({ -key => "$INDEX_ENUM$first_index_enum" });
 	if (not defined $index_record) {
 		croak (__PACKAGE__ . "::first_index - Corrupt database. Unable to locate '$INDEX_ENUM$first_index_enum' record\n");
@@ -3385,7 +3197,7 @@ sub first_index {
 
 =over 4
 
-=item C<next_index({-index => $index});>
+=item C<next_index({-index =E<gt> $index});>
 
 Returns the 'next' index in the system based on hash ordering.
 Returns 'undef' if there are no more indexes.
@@ -3399,25 +3211,11 @@ Example: my $next_index = $inv_map->next_index({-index => $index});
 sub next_index {
 	my $self = shift;
 
-    my ($parm_ref) = {};
-    if ($#_ == 0) {
-        $parm_ref  = shift;
-    } elsif ($#_ > 0) {
-        %$parm_ref = @_;
-    }
-    my $parms = Class::ParmList->new ({ -parms => $parm_ref,
-                                     -required => ['-index'],
-                                   });
-    if (not defined $parms) {
-    	my $error_message = Class::ParmList->error;
-		croak (__PACKAGE__ . "::next_index() - $error_message\n");
-    }
-	my ($index)      = $parms->get('-index');
-	my ($db)         = $self->get(-database);
+	my ($index) = simple_parms(['-index'],@_);
+	my ($db)    = $self->get(-database);
 	if (not $db) {
 		croak (__PACKAGE__ . "::next_index() - No database opened for use\n");
 	}
-	my ($null_enum)  = '-' x 12;
 	my ($index_enum) = $db->get({ -key => "$INDEX$index" });
 	return if (not defined $index_enum); # The passed index is not in the database
 	my ($index_record) = $db->get({ -key => "$INDEX_ENUM$index_enum" });
@@ -3428,7 +3226,7 @@ sub next_index {
 	if (not defined $this_index) {
 		croak (__PACKAGE__ . "::next_index() - Corrupt database. Unable to parse '$INDEX_ENUM$index_enum' record\n");
 	}
-	return if ($next_index_enum eq $null_enum); # No next index
+	return if ($next_index_enum eq $NULL_ENUM); # No next index
 	my ($next_index_record) = $db->get({ -key => "$INDEX_ENUM$next_index_enum" });
 	if (not defined $next_index_record) {
 		croak (__PACKAGE__ . "::next_index() - Corrupt database. Unable to locate '$INDEX_ENUM$next_index_enum' record\n");
@@ -3466,12 +3264,11 @@ sub list_all_groups {
 	if (not $db) {
 		croak (__PACKAGE__ . "::list_all_groups() - No database opened for use\n");
 	}
-	my ($null_enum)  = '-' x 12;
 	my ($first_group_enum) = $db->get({ -key => "${GROUP_ENUM}first_group_enum" });
 	my ($groups) = [];
-	return $groups if ((not defined $first_group_enum) or ($first_group_enum eq $null_enum));
+	return $groups if ((not defined $first_group_enum) or ($first_group_enum eq $NULL_ENUM));
 	my $group_enum = $first_group_enum;
-	while ($group_enum ne $null_enum) {
+	while ($group_enum ne $NULL_ENUM) {
 		my ($group_record) = $db->get({ -key => "$GROUP_ENUM$group_enum" });
 		if (not defined $group_record) {
 			croak (__PACKAGE__ . "::list_all_groups - Corrupt database. Unable to locate '$GROUP_ENUM$group_enum' record\n");
@@ -3505,9 +3302,10 @@ sub first_group{
 	if (not $db) {
 		croak (__PACKAGE__ . "::first_group() - No database opened for use\n");
 	}
-	my ($null_enum)  = '-' x 12;
+
 	my ($first_group_enum) = $db->get({ -key => "${GROUP_ENUM}first_group_enum" });
-	return if ($first_group_enum eq $null_enum);
+	return if ($first_group_enum eq $NULL_ENUM);
+
 	my ($group_record) = $db->get({ -key => "$GROUP_ENUM$first_group_enum" });
 	if (not defined $group_record) {
 		croak (__PACKAGE__ . "::first_group - Corrupt database. Unable to locate '$GROUP_ENUM$first_group_enum' record\n");
@@ -3523,7 +3321,7 @@ sub first_group{
 
 =over 4
 
-=item C<next_group ({-group => $group });>
+=item C<next_group ({-group =E<gt> $group });>
 
 Returns the 'next' group in the system based on hash ordering.
 Returns 'undef' if there are no more groups.
@@ -3537,26 +3335,11 @@ Example: my $next_group = $inv_map->next_group({-group => $group});
 sub next_group {
 	my $self = shift;
 
-    my ($parm_ref) = {};
-    if ($#_ == 0) {
-        $parm_ref  = shift;
-    } elsif ($#_ > 0) {
-        %$parm_ref = @_;
-    }
-    my $parms = Class::ParmList->new ({ -parms => $parm_ref,
-                                     -required => ['-group'],
-									 -defaults => {},
-                                   });
-    if (not defined $parms) {
-    	my $error_message = Class::ParmList->error;
-		croak (__PACKAGE__ . "::next_group() - $error_message\n");
-    }
-	my ($group)      = $parms->get(-group);
-	my ($db)         = $self->get(-database);
+	my ($group) = simple_parms(['-group'],@_);
+	my ($db)    = $self->get(-database);
 	if (not $db) {
 		croak (__PACKAGE__ . "::next_group() - No database opened for use\n");
 	}
-	my ($null_enum)  = '-' x 12;
 	my ($group_enum) = $db->get({ -key => "$GROUP$group" });
 	return if (not defined $group_enum); # The passed group is not in the database
 	my ($group_record) = $db->get({ -key => "$GROUP_ENUM$group_enum" });
@@ -3567,7 +3350,7 @@ sub next_group {
 	if (not defined $this_group) {
 		croak (__PACKAGE__ . "::next_group() - Corrupt database. Unable to parse '$GROUP_ENUM$group_enum' record\n");
 	}
-	return if ($next_group_enum eq $null_enum); # No next group
+	return if ($next_group_enum eq $NULL_ENUM); # No next group
 	my ($next_group_record) = $db->get({ -key => "$GROUP_ENUM$next_group_enum" });
 	if (not defined $next_group_record) {
 		croak (__PACKAGE__ . "::next_group() - Corrupt database. Unable to locate '$GROUP_ENUM$next_group_enum' record\n");
@@ -3580,88 +3363,75 @@ sub next_group {
 }
 
 ####################################################################
-
-=head2 Internals
-
-The routines after this point are _internal_ to the object.
-Do not access them from outside the object.
-
-They are documented in the POD for code maintainence reasons only.
-
-You Have Been Warned. ;)
-
-=cut
+#
+# Internals
+#
+#The routines after this point are _internal_ to the object.
+#Do not access them from outside the object.
+#
+#They are documented for code maintainence reasons only.
+#
+#You Have Been Warned. ;)
+#
 
 ####################################################################
-
-=over 4
-
-=item C<_bare_search($parm_ref);>
-
-Performs a query on the map and returns the results as a
-an anonymous array containing the keys and rankings.
-
-Example:
-
- my $query = Search::InvertedIndex::Query->new(...);
- my $result = $inv_map->search({ -query => $query });
-
-Performs a complex multi-key match search with boolean logic and
-optional search term weighting.
-
-The search request is formatted as follows:
-
-my $result = $inv_map->search({ -query => $query });
-
-where '$query' is a Search::InvertedIndex::Query object.
-
-
-Each node can either be a specific search term with an optional weighting
-term (a Search::InvertedIndex::Query::Leaf object) or a logic term with
-its own sub-branches (a Search::Inverted::Query object).
-
-The weightings are applied to the returned matches for each search term by
-multiplication of their base ranking before combination with the other logic terms.
-
-This allows recursive use of search to resolve arbitrarily
-complex boolean searches and weight different search terms.
-
-Returns a reference to a hash of indexes and their rankings.
-
-=back
-
-=cut
+# _bare_search($parm_ref);
+#
+#Performs a query on the map and returns the results as a
+#an anonymous array containing the keys and rankings.
+#
+#Example:
+#
+# my $query = Search::InvertedIndex::Query->new(...);
+# my $result = $inv_map->search({ -query => $query });
+#
+#Performs a complex multi-key match search with boolean logic and
+#optional search term weighting.
+#
+#The search request is formatted as follows:
+#
+#my $result = $inv_map->search({ -query => $query });
+#
+#where '$query' is a Search::InvertedIndex::Query object.
+#
+#
+#Each node can either be a specific search term with an optional weighting
+#term (a Search::InvertedIndex::Query::Leaf object) or a logic term with
+#its own sub-branches (a Search::Inverted::Query object).
+#
+#The weightings are applied to the returned matches for each search term by
+#multiplication of their base ranking before combination with the other logic terms.
+#
+#This allows recursive use of search to resolve arbitrarily
+#complex boolean searches and weight different search terms.
+#
+#Returns a reference to a hash of indexes and their rankings.
+#
 
 sub _bare_search {
 	my $self = shift;
 
-    my ($parm_ref) = {};
-    if ($#_ == 0) {
-        $parm_ref  = shift;
-    } elsif ($#_ > 0) {
-        %$parm_ref = @_;
-    }
-	my $parms = Class::ParmList->new ({ -parms => $parm_ref,
-                                        -legal => ['-use_cache'],
-                                     -required => ['-query'],
-                                     -defaults => { -cache => 0},
-                                  });
+	my $parms = parse_parms ({ -parms => \@_,
+							   -legal => ['-use_cache'],
+							-required => ['-query'],
+							-defaults => { -cache => 0},
+						  });
 
-    if (not defined $parms) {
-    	my $error_message = Class::ParmList->error;
+	if (not defined $parms) {
+		my $error_message = Class::ParmList->error;
 		croak (__PACKAGE__ . "::search() - $error_message\n");
-    }
+	}
 	my ($query,$use_cache) = $parms->get('-query','-use_cache');
 	my $db    = $self->get(-database);
 	if (not $db) {
 		croak (__PACKAGE__ . "::search() - No database opened for use\n");
 	}
 
-    my $group_enum_cache = {};
+	my $group_enum_cache = {};
 	my $terms = [];
 
 	# Load the leaf term data
-	my ($logic,$weight,$leafs,$nodes) = $query->get(-logic,-weight,-leafs,-nodes);	
+	my ($logic,$weight,$leafs,$nodes) = $query->get(-logic,-weight,-leafs,-nodes);
 	$logic = lc ($logic);
 	if ($logic !~ m/^(and|or|nand)$/) {
 		croak (__PACKAGE__ . "::search() - Illegal -logic value of '$logic'. Must be one of 'and','or','nand'\n");
@@ -3684,11 +3454,11 @@ sub _bare_search {
 		}
 		my ($keyed_index_list_record) = $db->get({ -key => "$GROUP_ENUM_DATA$group_enum$KEYED_INDEX_LIST$key_enum" });
 		$keyed_index_list_record = '' if (not defined $keyed_index_list_record);
-		my $index_data = $self->_unpack_list($keyed_index_list_record);
+		my $index_data = _unpack_list($keyed_index_list_record);
 		if ($weight != 1) {
 			my (@index_enums) = keys (%$index_data);
 			foreach my $index_enum (@index_enums) {
-				$index_data->{$index_enum} *= $weight;	
+				$index_data->{$index_enum} *= $weight;
 			}
 		}
 		push (@$terms,$index_data);
@@ -3719,40 +3489,20 @@ sub _bare_search {
 }
 
 ####################################################################
-
-=over 4
-
-=item C<_get_data_for_index_enum($parm_ref);>
-
-Returns the data record for the passed -index_enum.
-
-Returns undef if no data record exists for the requested -index_enum.
-
-Example:
-  my $data = $self->_get_data_for_index_enum({ -index_enum => $index_enum });
-
-=back
-
-=cut
+#_get_data_for_index_enum($parm_ref);
+#
+#Returns the data record for the passed -index_enum.
+#
+#Returns undef if no data record exists for the requested -index_enum.
+#
+#Example:
+#  my $data = $self->_get_data_for_index_enum({ -index_enum => $index_enum });
+#
 
 sub _get_data_for_index_enum {
 	my ($self) = shift;
 
-    my ($parm_ref) = {};
-    if ($#_ == 0) {
-        $parm_ref  = shift;
-    } elsif ($#_ > 0) {
-        %$parm_ref = @_;
-    }
-	my $parms = Class::ParmList->new ({ -parms => $parm_ref,
-                                     -required => ['-index_enum'],
-                                  });
-
-    if (not defined $parms) {
-    	my $error_message = Class::ParmList->error;
-		croak (__PACKAGE__ . "::search() - $error_message\n");
-	}
-	my ($index_enum) = $parms->get(-index_enum);
+	my ($index_enum) = simple_parms(['-index_enum'],@_);
 	my ($db,$thaw)   = $self->get('-database','-thaw');
 	if (not $db) {
 		croak (__PACKAGE__ . "::search() - No database opened for use\n");
@@ -3764,21 +3514,15 @@ sub _get_data_for_index_enum {
 }
 
 ####################################################################
-
-=over 4
-
-=item C<_and($terms);>
-
-Takes the passed list of search data results and merges them
-via logical _and. Merged ranking is the sum of the individual rankings.
-
-=back
-
-=cut
+# _and($terms);
+#
+# Takes the passed list of search data results and merges them
+# via logical _and. Merged ranking is the sum of the individual rankings.
+#
 
 sub _and {
 	my $self = shift;
-	
+
 	my ($terms) = @_;
 
 	my $n_terms = $#$terms + 1;
@@ -3798,30 +3542,24 @@ sub _and {
 			}
 		}
 	}
-#	foreach $key (keys %merged) { # arithmetical average each term
-#		$merged{$key} /= $n_terms;
-#	}
+#    foreach $key (keys %merged) { # arithmetical average each term
+#        $merged{$key} /= $n_terms;
+#    }
 
-	\%merged;
+	return \%merged;
 }
 
 ####################################################################
-
-=over 4
-
-=item C<_nand($terms);>
-
-Takes the passed list of search data results and merges them
-via logical NAND (Not And). Merged ranking is the sum
-of the individual rankings.
-
-=back
-
-=cut
+# _nand($terms);
+#
+#Takes the passed list of search data results and merges them
+#via logical NAND (Not And). Merged ranking is the sum
+#of the individual rankings.
+#
 
 sub _nand {
 	my $self = shift;
-	
+
 	my ($terms) = @_;
 
 	my $n_terms = $#$terms + 1;
@@ -3850,25 +3588,19 @@ sub _nand {
 			delete $merged{$key};
 		}
 	}
-	\%merged;
+	return \%merged;
 }
 
 ####################################################################
-
-=over 4
-
-=item C<_or($terms);>
-
-Takes the passed list of search data results and merges them
-via logical OR. Merged ranking is the sum of the individual rankings.
-
-=back
-
-=cut
+# _or($terms);
+#
+# Takes the passed list of search data results and merges them
+# via logical OR. Merged ranking is the sum of the individual rankings.
+#
 
 sub _or {
 	my $self = shift;
-	
+
 	my ($terms) = @_;
 
 	my $n_terms = $#$terms + 1;
@@ -3891,87 +3623,22 @@ sub _or {
 	}
 
 	# Compute arithmetical averages of the terms
-#	my @merge_keys = keys %merged;
-#	foreach $key (@merge_keys) {
-#		$merged{$key} /= $count{$key};
-#	}
+#    my @merge_keys = keys %merged;
+#    foreach $key (@merge_keys) {
+#        $merged{$key} /= $count{$key};
+#    }
 
-	\%merged;
+	return \%merged;
 }
 
-####################################################################
-
-=over 4
-
-=item C<_pack_list($hash_ref);>
-
-Internal method. Not for access outside of the module.
-
-Packs the passed hash ref of enum keys and signed 16 bit int values
-into a dense binary structure. There is an endian dependancy
-here.
-
-=back
-
-=cut
-
-sub _pack_list {
-	my ($self) = shift;
-
-	my ($hash_ref) = @_;
-
-	my (@data_list)   = %$hash_ref;
-	my ($list_length) = int (($#data_list + 1)/2);
-	return '' if ($list_length == 0);
-	pack ("H12s" x $list_length,@data_list);
-}
 
 ####################################################################
-
-=over 4
-
-=item C<_unpack_list($packed_list);>
-
-Internal method. Not for access outside of the module.
-
-Unpacks the passed dense binary structure into
-an anonymous hash of enum keys and signed 16 bit int values.
-There is an endian dependancy here.
-
-=back
-
-=cut
-
-sub _unpack_list {
-	my ($self) = shift;
-
-	my ($bin_pack) = @_;
-
-	if (not defined $bin_pack) {
-		croak (__PACKAGE__ . "::_unpack_list() - did not pass a binary structure for unpacking\n");
-	}
-
-	my ($list_length) = length($bin_pack)/8;
-	my ($hash_ref)    = {};
-	return $hash_ref if ($list_length == 0);
-	%$hash_ref        = unpack("H12s" x $list_length,$bin_pack);
-
-	$hash_ref;
-}
-
-####################################################################
-
-=over 4
-
-=item C<_increment_enum($enum_value);>
-
-Internal method. Not for access outside of the module.
-
-Increments an 'enum' (internally a 12 digit hexadecimal number) by 1.
-
-=back
-
-=cut
+# _increment_enum($enum_value);
+#
+# Internal method. Not for access outside of the module.
+#
+# Increments an 'enum' (internally a 12 digit hexadecimal number) by 1.
+#
 
 sub _increment_enum {
 	my $self = shift;
@@ -4000,16 +3667,9 @@ sub _increment_enum {
 }
 
 ################################################################
-
-=over 4
-
-=item C<_untaint($string);>
-
-Untaints the passed string. Use with care.
-
-=back
-
-=cut
+#_untaint($string);
+#
+#Untaints the passed string. Use with care.
 
 sub _untaint {
 	my ($self) = shift;
@@ -4023,93 +3683,110 @@ sub _untaint {
 	$untainted_string;
 }
 
-################################################################
+####################################################################
+#
+# DESTROY;
+#
+# Closes the currently open -map and flushes all associated buffers.
+#
 
-=head1 DATABASE STRUCTURES
+sub DESTROY {
+	my ($self) = shift;
+	$self->close;
+}
 
-The inverted database uses a complex overlay built on a generic
-key/value accessible database (it really is fairly 'database agnostic').
-
-It is organized into sub-sets of information by database key name space:
-
- ; Counter. Incremented for new groups, decremented for deleted groups.
- number_of_groups        -> # (decimal integer)
-
- ; Counter. Incremented for new indexes, decremented for deleted indexes.
- number_of_indexes       -> # (decimal integer)
-
- ; Counter. Incremented for new keys, decremented for deleted keys.
- number_of_keys          -> # (decimal integer)
-
- ; The 'high water' mark used in assigning new index_enum keys
- index_enum_counter      -> # (12 digit hex number)
-
- ; Maps an index ("file") to its assigned index enumeration key
- $INDEX<index>               -> index_enum
-
- ; Maps the assigned index enumeration back to the index ("file") and
- ; provides pointers to the 'next' and 'prev' index_enums in the system
- $INDEX_ENUM<index_enum>         -> _next_index_enum_ _prev_index_enum_ index
-
- ; Maps the 'first' 'index_enum' for the system
- ${INDEX_ENUM}first_index_enum     -> index_enum of 'first' index_enum for the system
-
- ; Data record for the index ("File"). Wrapped using 'Storable' or 'Data::Dumper'
- $INDEX_ENUM_DATA<index_enum>_data   -> data
-
- ; The 'high water' mark used in assigning new group_enum keys
- group_enum_counter      -> # (12 digit hex number)
-
- ; Maps a group's name to its assigned group enumeration key
- $GROUP<groupname>           -> group_enum
-
- ; Maps the assigned group enumeration key to a group and provides
- ; pointers to the 'next' and 'previous' groups in the system.
- $GROUP_ENUM<group_enum>         -> _prev_group_enum_ _next_group_enum_ $group
-
- ; Maps the 'first' 'group_enum' for the system
- ${GROUP_ENUM}first_group_enum     -> group_enum of 'first' group_enum for the system
-
- ; Counter. Incremented for new keys, decremented for deleted keys.
- $GROUP_ENUM_DATA<group_enum>_number_of_keys     -> # (decimal integer)
-
- ; Counter. Incremented for new indexes, decremented for deleted indexes.
- $GROUP_ENUM_DATA<group_enum>_number_of_indexes  -> #  (decimal integer)
-
- ; 'High water' mark used in assigning new key_enum values for keys
- $GROUP_ENUM_DATA<group_enum>_key_enum_counter   -> # (12 digit hex number)
-
- ; Maps the 'first' 'key_enum' for the group
- $GROUP_ENUM_DATA<group_enum>_first_key_enum         -> key_enum of 'first' key_enum
-
- ; Maps the 'first' 'index_enum' for the group
- $GROUP_ENUM_DATA<group_enum>_first_index_enum       -> index_enum of 'first' index_enum for the group
-
- ; network order packed list of (6 byte) key_enums and
- ; (16 bit signed) relevance rankings for the specified group_enum
- ; and index_enum
- $GROUP_ENUM_DATA<group_enum>$INDEXED_KEY_LIST<index_enum>           -> key_list
-
- ; Pointers to the 'next' and 'previous' index_enums for this group.
- $GROUP_ENUM_DATA<group_enum>$INDEX_ENUM_GROUP_CHAIN<index_enum>           -> _prev_index_enum_ _next_index_enum_
-
- ; network order packed list of (6 byte) index_enums
- ; and (16 bit signed) relevance rankings for the specified group_enum
- ; and key_enum
- $GROUP_ENUM_DATA<group_enum>$KEYED_INDEX_LIST<key_enum>             -> index_list
-
- ; Maps 'key's to 'key_enum's
- $GROUP_ENUM_DATA<group_enum>$KEY_TO_KEY_ENUM<key>                  -> key_enum
-
- ; Maps 'key_enum's to 'key's and provides pointers to the
- ; 'next' and 'previous' keys for the group
- $GROUP_ENUM_DATA<group_enum>$KEY_ENUM_TO_KEY_AND_CHAIN<key_enum>             -> _prev_key_enum_ _next_key_enum_ key
-
-=cut
+# ################################################################
+#
+# DATABASE STRUCTURES
+#
+# The inverted database uses a complex overlay built on a generic
+# key/value accessible database (it really is fairly 'database agnostic').
+#
+# It is organized into sub-sets of information by database key name space:
+#
+#  ; Stringifier. The serializer used for packing information for storage
+#  $STRINGIFIER            -> 'Data::Dumper' or 'Storable'
+#
+#  $VERSION                -> The version number of Search::InvertedIndex
+#                             matching this database.
+#
+#  ; Counter. Incremented for new groups, decremented for deleted groups.
+#  number_of_groups        -> # (decimal integer)
+#
+#  ; Counter. Incremented for new indexes, decremented for deleted indexes.
+#  number_of_indexes       -> # (decimal integer)
+#
+#  ; Counter. Incremented for new keys, decremented for deleted keys.
+#  number_of_keys          -> # (decimal integer)
+#
+#  ; The 'high water' mark used in assigning new index_enum keys
+#  index_enum_counter      -> # (12 digit hex number)
+#
+#  ; Maps an index ("file") to its assigned index enumeration key
+#  $INDEX<index>               -> index_enum
+#
+#  ; Maps the assigned index enumeration back to the index ("file") and
+#  ; provides pointers to the 'next' and 'prev' index_enums in the system
+#  $INDEX_ENUM<index_enum>         -> _next_index_enum_ _prev_index_enum_ index
+#
+#  ; Maps the 'first' 'index_enum' for the system
+#  ${INDEX_ENUM}first_index_enum     -> index_enum of 'first' index_enum for the system
+#
+#  ; Data record for the index ("File"). Wrapped using 'Storable' or 'Data::Dumper'
+#  $INDEX_ENUM_DATA<index_enum>_data   -> data
+#
+#  ; The 'high water' mark used in assigning new group_enum keys
+#  group_enum_counter      -> # (12 digit hex number)
+#
+#  ; Maps a group's name to its assigned group enumeration key
+#  $GROUP<groupname>           -> group_enum
+#
+#  ; Maps the assigned group enumeration key to a group and provides
+#  ; pointers to the 'next' and 'previous' groups in the system.
+#  $GROUP_ENUM<group_enum>         -> _prev_group_enum_ _next_group_enum_ $group
+#
+#  ; Maps the 'first' 'group_enum' for the system
+#  ${GROUP_ENUM}first_group_enum     -> group_enum of 'first' group_enum for the system
+#
+#  ; Counter. Incremented for new keys, decremented for deleted keys.
+#  $GROUP_ENUM_DATA<group_enum>_number_of_keys     -> # (decimal integer)
+#
+#  ; Counter. Incremented for new indexes, decremented for deleted indexes.
+#  $GROUP_ENUM_DATA<group_enum>_number_of_indexes  -> #  (decimal integer)
+#
+#  ; 'High water' mark used in assigning new key_enum values for keys
+#  $GROUP_ENUM_DATA<group_enum>_key_enum_counter   -> # (12 digit hex number)
+#
+#  ; Maps the 'first' 'key_enum' for the group
+#  $GROUP_ENUM_DATA<group_enum>_first_key_enum         -> key_enum of 'first' key_enum
+#
+#  ; Maps the 'first' 'index_enum' for the group
+#  $GROUP_ENUM_DATA<group_enum>_first_index_enum       -> index_enum of 'first' index_enum for the group
+#
+#  ; network order packed list of (6 byte) key_enums and
+#  ; (16 bit signed) relevance rankings for the specified group_enum
+#  ; and index_enum
+#  $GROUP_ENUM_DATA<group_enum>$INDEXED_KEY_LIST<index_enum>           -> key_list
+#
+#  ; Pointers to the 'next' and 'previous' index_enums for this group.
+#  $GROUP_ENUM_DATA<group_enum>$INDEX_ENUM_GROUP_CHAIN<index_enum>           -> _prev_index_enum_ _next_index_enum_
+#
+#  ; network order packed list of (6 byte) index_enums
+#  ; and (16 bit signed) relevance rankings for the specified group_enum
+#  ; and key_enum
+#  $GROUP_ENUM_DATA<group_enum>$KEYED_INDEX_LIST<key_enum>             -> index_list
+#
+#  ; Maps 'key's to 'key_enum's
+#  $GROUP_ENUM_DATA<group_enum>$KEY_TO_KEY_ENUM<key>                  -> key_enum
+#
+#  ; Maps 'key_enum's to 'key's and provides pointers to the
+#  ; 'next' and 'previous' keys for the group
+#  $GROUP_ENUM_DATA<group_enum>$KEY_ENUM_TO_KEY_AND_CHAIN<key_enum>             -> _prev_key_enum_ _next_key_enum_ key
+#
 
 =head1 VERSION
 
-1.12
+1.13
 
 =head1 COPYRIGHT
 
@@ -4123,7 +3800,7 @@ Benjamin Franz
 
 =head1 TODO
 
-Everything.
+Integrate code and documentation patches from Kate Pugh. Seperate POD into .pod files.
 
 Concept item for evaluation: By storing a dense list of all indexed keywords,
 you would be able to use a regular expression or other fuzzy search matching

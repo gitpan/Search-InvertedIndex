@@ -1,10 +1,11 @@
 #!/usr/bin/perl -w
 
 use strict;
-use lib ('../blib','./lib');
+use lib ('./blib','./lib','../blib','../lib');
 use Search::InvertedIndex;
 
 my @do_tests = (1..11);
+#@do_tests=(200);
 my $test_map = "test-inv_index.$$";
 
 local $| = 1;
@@ -21,17 +22,18 @@ my $db_spec ={
       -read_write_mode => 'RDWR',
  };
 
-my $test_subs = { 1 => { -code => \&test1, -desc => 'open/lock database.....' },
-                  2 => { -code => \&test2, -desc => 'reopen/lock database...' },
-                  3 => { -code => \&test3, -desc => 'bare group add/remove..' },
-                  4 => { -code => \&test4, -desc => 'bare key add/remove....' },
-                  5 => { -code => \&test5, -desc => 'bare index add/remove..' },
-                  6 => { -code => \&test6, -desc => 'entry add/remove.......' },
-                  7 => { -code => \&test7, -desc => 'index data/key removal.' },
-                  8 => { -code => \&test8, -desc => 'update.................' },
-                  9 => { -code => \&test9, -desc => 'preload................' },
-                 10 => { -code => \&test10, -desc => 'update + search.......' },
-                 11 => { -code => \&test11, -desc => 'preload + search......' },
+my $test_subs = { 1 => { -code => \&test1, -desc =>  ' open/lock database.....' },
+                  2 => { -code => \&test2, -desc =>  ' reopen/lock database...' },
+                  3 => { -code => \&test3, -desc =>  ' bare group add/remove..' },
+                  4 => { -code => \&test4, -desc =>  ' bare key add/remove....' },
+                  5 => { -code => \&test5, -desc =>  ' bare index add/remove..' },
+                  6 => { -code => \&test6, -desc =>  ' entry add/remove.......' },
+                  7 => { -code => \&test7, -desc =>  ' index data/key removal.' },
+                  8 => { -code => \&test8, -desc =>  ' update.................' },
+                  9 => { -code => \&test9, -desc =>  ' preload................' },
+                 10 => { -code => \&test10, -desc => 'update + search........' },
+                 11 => { -code => \&test11, -desc => 'preload + search.......' },
+                 200 => { -code => \&test200, -desc => 'preload timing test.' },
                  };
 
 print $do_tests[0],'..',$do_tests[$#do_tests],"\n";
@@ -626,6 +628,61 @@ sub test10 {
 }
 
 ################################################################################
+# Test 'preload' timing                                                        #
+################################################################################
+sub test200 {
+
+	# Get the database object
+	my $database = Search::InvertedIndex::DB::DB_File_SplitHash->new($db_spec);
+	if (not defined $database) {
+	    return "failed - Search::InvertedIndex::DB::MultiDB_File could not be initialized\n";
+	}
+
+	# Open the database
+	my $inv_map  = Search::InvertedIndex->new({ -database => $database });
+	if (not defined $inv_map) {
+	    return "failed - Search::InvertedIndex could not be initialized\n";
+	}
+
+    # Clear the database
+    $inv_map->clear_all;
+
+    # Add a test group
+    my $group = 'test-group';
+    $inv_map->add_group({ -group => $group });
+
+    # Add some data 
+    my $test_set = &make_dataset(1000,100);
+    my $start_time = time;
+    my @index_list = keys %$test_set;
+    my ($key_counter) = {};
+    my ($per_index_key_counter) = {};
+    foreach my $index (@index_list) {
+        my $entry = $test_set->{$index};
+        my $data = $entry->{-data};
+        my $keys = $entry->{'-keys'};
+        my @test_keys = keys %$keys;
+        foreach my $key (@test_keys) {
+            $key_counter->{$key}++;
+            $per_index_key_counter->{$index}->{$key}++;
+        }
+        my $update = Search::InvertedIndex::Update->new({ 
+                 -group => $group,   '-index' => $index, 
+                  -data => $data,     '-keys' => $keys });
+        $inv_map->preload_update({ -update => $update });
+    }
+    my @key_list = keys (%$key_counter);
+    my $load_time = time - $start_time;
+    print STDERR "(preload: $load_time seconds, ";
+    $start_time = time;
+    $inv_map->update_group({ -group => $group, -block_size => 300000 });
+    $load_time = time - $start_time;
+    print STDERR "group load: $load_time seconds) ";
+	$inv_map->close;
+    return '';
+}
+
+################################################################################
 # Test 'preload'                                                               #
 ################################################################################
 sub test9 {
@@ -650,7 +707,7 @@ sub test9 {
     $inv_map->add_group({ -group => $group });
 
     # Add some data 
-    my $test_set = &make_dataset(10,5);
+    my $test_set = &make_dataset(100,10);
     my $start_time = time;
     my @index_list = keys %$test_set;
     my ($key_counter) = {};
@@ -671,11 +728,11 @@ sub test9 {
     }
     my @key_list = keys (%$key_counter);
     my $load_time = time - $start_time;
-#    print STDERR "(preload: $load_time seconds, ";
+    #print STDERR "(preload: $load_time seconds, ";
     $start_time = time;
     $inv_map->update_group({ -group => $group, -block_size => 256 });
     $load_time = time - $start_time;
-#    print STDERR "group load: $load_time seconds) ";
+    #print STDERR "group load: $load_time seconds) ";
 
     # Check that the index data is readable and correct
     my $n_indexes = $inv_map->number_of_indexes_in_group({ -group => $group });
