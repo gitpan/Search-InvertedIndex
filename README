@@ -12,8 +12,9 @@ Search::InvertedIndex
  It is designed to allow the easy 'plug in' of any wanted 
  backend database in place of DB_File. Requires (as of now) 
  'Digest::SHA1', 'DB_File', 'Class::NamedParms', 'Class::ParmList', 
- 'Tie::FileLRUCache', and 'Tie::DB_File::SplitHash' 
- modules for support. 
+ 'Tie::FileLRUCache', and 'Tie::DB_File::SplitHash', 
+ modules for support. Additionally, it requires either 'Storable' or
+ 'Data::Dumper' to be installed for data serialization. 
 
 CHANGES
 
@@ -38,6 +39,12 @@ CHANGES
 
  1.09 2000.03.23 - Bug fix to 'Search::InvertedIndex::DB:DB_File_SplitHash' submodule  
                    to manage case where 'open' is not performed before 'close' is called. 
+
+ 1.10 2000.07.05 - Delayed loading of serializer and added option to select
+                   which serializer (Storable or Data::Dumper) to use at instance 'new' time. 
+                   This should allow module to be loaded by mod_perl via the 'PerlModule' 
+                   conf directive and enable use on platforms that do not support
+                   'Storable' (such as Macintosh).
 
 To install:
 

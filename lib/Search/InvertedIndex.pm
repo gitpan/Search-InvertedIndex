@@ -4,14 +4,13 @@ package Search::InvertedIndex;
 
 use strict;
 use Carp;
-use Storable qw(nstore retrieve nfreeze thaw dclone);
 use Class::NamedParms;
 use Class::ParmList;
 use Search::InvertedIndex::AutoLoader;
 use vars qw (@ISA $VERSION);
 
 @ISA     = qw(Class::NamedParms);
-$VERSION = "1.09";
+$VERSION = '1.10';
 
 # Used to catch attempts to open the same -map 
 # to multiple objects simultaneously and to
@@ -20,6 +19,9 @@ $VERSION = "1.09";
 my $open_maps = {};
 
 # DATABASE SECTIONING CONSTANTS.
+my $DATABASE_STRINGIFIER      = 'stringifier';
+my $DATABASE_VERSION          = 'database_version';
+
 my $INDEX                     = 'i_';
 my $INDEX_ENUM                = 'ie_';
 my $INDEX_ENUM_DATA           = 'ied_';
@@ -65,7 +67,7 @@ Search::InvertedIndex - A manager for inverted index maps
 ##########################################################
 # Example Update
 ##########################################################
-  
+
   my $index_data = "Some scalar - complex structure refs are ok";
 
   my $update = Search::InvertedIndex::Update->new({
@@ -149,7 +151,7 @@ of records can be searched extremely quickly.
                    Performance tweaking. Roughly 3x improvement.
 
  1.03 1999.06.30 - Documentation fixes.
- 
+
  1.04 1999.07.01 - Documentation fixes and caching system bugfixes.
 
  1.05 1999.10.20 - Altered ranking computation on search results  
@@ -163,6 +165,12 @@ of records can be searched extremely quickly.
 
  1.09 2000.03.23 - Bugfix to 'Search::InvertedIndex::DB:DB_File_SplitHash' submodule  
                    to manage case where 'open' is not performed before close is called. 
+
+ 1.10 2000.07.05 - Delayed loading of serializer and added option to select
+                   which serializer (Storable or Data::Dumper) to use at instance 'new' time. 
+                   This should allow module to be loaded by mod_perl via the 'PerlModule' 
+                   conf directive and enable use on platforms that do not support
+                   'Storable' (such as Macintosh).
 
 =head2 Public API
 
@@ -189,7 +197,8 @@ Example 1:
        -blocking_locks => 0,
             -cachesize => 1000000,
         -write_through => 0, 
-      -read_write_mode => 'RDONLY';
+      -read_write_mode => 'RDONLY',
+          -stringifier => ['Storable','Data::Dumper'],
         });
 
  my $inv_map = Search::InvertedIndex->new({ 
@@ -202,6 +211,15 @@ The -database parameter is required and must be a 'Search::InvertedIndex::DB::..
 type database object. The other two parameters are optional and define the 
 location and size of the search cache. If omitted, no search caching will be done.
 
+The optional '-stringifier' parameter can be used to override the default
+use of 'Storable' (with fallback to 'Data::Dumper') as the stringifier used
+for storing data by the module. Specifiying -stringifier => 'Data::Dumper'
+would specify using 'Data::Dumper' (only) as the stringifier while
+specifiying -stringifier => ['Data::Dumper','Storable'] would specify
+to use Data::Dumper by preference (but to fall back to 'Storable' if Data::Dumper 
+was not available). If a database was created using a particular serializer,
+it will automatically detect it and attempt to use the correct one.
+
 =back
 
 =cut
@@ -209,7 +227,7 @@ location and size of the search cache. If omitted, no search caching will be don
 sub new {
 	my $proto = shift;
     my $class = ref ($proto) || $proto;
-	my $self  = Class::NamedParms->new(-database,-search_cache_dir,-search_cache_size);
+	my $self  = Class::NamedParms->new(qw (-database -search_cache_dir -search_cache_size -thaw -freeze -stringifier));
 	bless $self,$class;
 
    # Read any passed parms
@@ -225,7 +243,8 @@ sub new {
                                  -legal => ['-search_cache_size', '-search_cache_dir'],
 						      -required => ['-database'],
                               -defaults => { -search_cache_size => 0, 
-							                 -search_cache_dir => undef,
+							                  -search_cache_dir => undef,
+                                                   -stringifier => [qw(Storable Data::Dumper)],
 										},
    							});
 
@@ -234,15 +253,94 @@ sub new {
    	    croak (__PACKAGE__ . "::new() - $error_message\n");
 	}
 
-	my ($database,$search_cache_dir,$search_cache_size) = 
-			$parms->get(-database,-search_cache_dir,-search_cache_size);
-	$self->set({ -database => $database,
+	my ($database,$search_cache_dir,$search_cache_size,$stringifier) = 
+			$parms->get(qw (-database -search_cache_dir -search_cache_size -stringifier));
+
+    $stringifier = [$stringifier] if ('ARRAY' ne ref($stringifier));            
+
+    $self->set({ -database => $database,
          -search_cache_dir => $search_cache_dir,
         -search_cache_size => $search_cache_size,
 			 });
+
 	$database->open;
 
+    $self->_select_stringifier(@$stringifier);
+
 	$self;
+}
+
+#####################################################################
+#
+# $self->_select_stringifier(@stringifier_list);
+#
+# Selects the serializer to use for data serialization in the database
+#
+
+sub _select_stringifier {
+    my $self = shift;
+
+    my @stringifier = @_;
+
+	my $db    = $self->get(-database);
+
+    # We use whatever the *database* may already have used in preference
+    # to any requests for a stringifier. This will prevent wierdness like the database
+    # breaking because 'Storable' was installed after it was created
+    # using 'Data::Dumper'.This is backward compatible with old databases
+    # created with this because old database defaulted to 'Storable'
+    my $declared_stringifier = $db->get({ -key => $DATABASE_STRINGIFIER });
+    if (defined $declared_stringifier) {
+        @stringifier = ($declared_stringifier);
+    }
+
+    # We delay the load of stringification modules to here to make it 
+    # compatible with PerlModule for mod_perl and to allow a choice
+    # of stringification modules
+    my $have_stringifier;
+    foreach my $module_name (@stringifier) {
+        eval "use $module_name;";
+        next if ($@);
+        $have_stringifier = $module_name;
+        last;
+    }
+    if (not defined $have_stringifier) {
+            croak('[' . localtime(time) . "] [error] " . __PACKAGE__ . 
+                "::_select_stringifier() - Unable to load stringification modules. Tried: " . join (' ',@stringifier));
+    }
+    my ($thaw,$freeze);
+    if ($have_stringifier eq 'Storable') {
+        $thaw   = \&Storable::thaw;
+        $freeze = \&Storable::nfreeze;
+    } elsif ($have_stringifier eq 'Data::Dumper') {
+        my $dumper = Data::Dumper->new(['blecherous']);
+        $thaw   = sub { my $value = shift; local $^W; no strict 'vars'; my $thawed = eval $value; return $thawed; };
+        if ($dumper->can('Dumpxs')) {
+            $freeze = sub { my $value = shift; local $Data::Dumper::Purity = 1; local $Data::Dumper::Indent = 0; my $frozen = Data::Dumper::DumperX($value); return $frozen; };
+        } else {
+            $freeze = sub { my $value = shift; local $Data::Dumper::Purity = 1; local $Data::Dumper::Indent = 0; my $frozen = Data::Dumper::Dumper($value); return $frozen; };
+
+        }
+    } else {
+            croak('[' . localtime(time) . "] [error] " . __PACKAGE__ . 
+                "::_select_stringifier() - Unsupported stringification module ($have_stringifier)");
+
+    }
+
+    # This may well fail if the database was opened read only. We don't care if it does. 
+    # A silent failure is *ok*.
+    if ((not defined $declared_stringifier) and ('EX' eq $db->status('-lock_mode'))) {
+        $db->put({ -key => $DATABASE_STRINGIFIER, -value => $have_stringifier });
+        my $database_version = $db->get({ -key => $DATABASE_VERSION });
+        if (not defined $database_version) {
+            $db->put({ -key => $DATABASE_VERSION, -value => $VERSION });
+        }    
+    }
+
+    $self->set({
+                     -thaw => $thaw,
+                   -freeze => $freeze,
+			 });
 }
 
 ####################################################################
@@ -529,8 +627,8 @@ sub preload_update {
     	my $error_message = Class::ParmList->error;
 		croak (__PACKAGE__ . "::preload_update() - $error_message\n");
     }
-	my ($update) = $parms->get(qw(-update));
-	my ($db)     = $self->get(-database);
+	my ($update)     = $parms->get(qw(-update));
+	my ($db,$freeze) = $self->get(qw(-database -freeze));
 	if (not $db) {
 		croak (__PACKAGE__ . "::preload_update() - No database opened for use\n");
 	}
@@ -567,7 +665,7 @@ sub preload_update {
                              -value => "$update_counter" })) {
 		croak(__PACKAGE__ . "::preload_update() - Failed to save incremented UPDATE_GROUP_COUNTER for group '$group'\n");
 	}
-	my $update_record = nfreeze($update);
+	my $update_record = &$freeze($update);
 	if (not defined $db->put({ -key => "$PRELOAD_GROUP_ENUM_DATA$group_enum$UPDATE_DATA$update_counter",
                              -value => $update_record })) {
 		croak(__PACKAGE__ . "::preload_update() - Failed to save preloaded Update record for group '$group'\n");
@@ -696,7 +794,7 @@ sub update_group {
     	my $error_message = Class::ParmList->error;
 		croak (__PACKAGE__ . "::update_group() - $error_message\n");
     }
-	my ($db)     = $self->get(-database);
+	my ($db,$thaw) = $self->get('-database','-thaw');
 	if (not $db) {
 		croak (__PACKAGE__ . "::update_group() - No database opened for use\n");
 	}
@@ -737,12 +835,12 @@ sub update_group {
 	while ($counter lt $update_counter) {
 		$counter = $self->_increment_enum($counter);
 		my $update_record = $db->get({ -key => "$PRELOAD_GROUP_ENUM_DATA$original_group_enum$UPDATE_DATA$counter" });
-		my $update = thaw ($update_record);
+		my $update = &$thaw($update_record);
     	my ($index,$index_data,$alleged_group,$key_list) = $update->get(qw(-index -data -group -keys));
     	if (not defined $key_list) {
     		$key_list = {};
     	}
-    
+
     	# Create the -index and store the -data record for the -index as needed
     	my $index_enum;
     	if (defined $index_data) {
@@ -756,7 +854,7 @@ sub update_group {
 
 		# Add the -index to the update group
 		$self->add_index_to_group({ -group => $group, '-index' => $index });
-    
+
     	my $new_keys = 0;
     	my $indexed_keys = {};
     	while (my ($key,$ranking) = each %$key_list) {
@@ -764,7 +862,7 @@ sub update_group {
 
     		# Add the key to the group, if necessary.
     		my $key_enum = $self->add_key_to_group ({ -group => $group, -key => $key });
-    
+
     		# Add the ranking to the running key_enum indexed record
     		$indexed_keys->{$key_enum} = $ranking;
 
@@ -799,7 +897,7 @@ sub update_group {
     			croak (__PACKAGE__ . "::update_group() - Failed to save updated '$GROUP_ENUM_DATA${group_enum}$INDEXED_KEY_LIST$index_enum' -> (list of ranked keys)\n");
     		}
     	}
-    
+
     	# Update the INDEX_ENUM_GROUP_CHAIN as necessary
     	# Check if the index already exists in the group 
     	my ($chain) = $db->get({ -key => "$GROUP_ENUM_DATA$group_enum$INDEX_ENUM_GROUP_CHAIN$index_enum" });
@@ -1152,8 +1250,8 @@ sub data_for_index {
     	my $error_message = Class::ParmList->error;
 		croak (__PACKAGE__ . "::data_for_index() - $error_message\n");
 	}
-	my ($index) = $parms->get('-index');
-	my ($db)         = $self->get(-database);
+	my ($index)    = $parms->get('-index');
+	my ($db,$thaw) = $self->get('-database','-thaw');
 	if (not $db) {
 		croak (__PACKAGE__ . "::data_for_index() - No database opened for use\n");
 	}
@@ -1163,7 +1261,7 @@ sub data_for_index {
 	if (not defined $data_record) {
 		croak (__PACKAGE__ . "::data_for_index() - Corrupt database. Record '$INDEX_ENUM_DATA${index_enum}_data' not found in system unexpectedly.\n");
 	}
-	my ($data_ref) = thaw($data_record);
+	my ($data_ref) = &$thaw($data_record);
 	$data_ref->{-data};
 }
 
@@ -1555,7 +1653,7 @@ If the 'index' is the same as an existing index, the '-data' for that
 index will be updated. 
 
 -data can be pretty much any scalar. strings/object/hash/array references are ok. 
-They will be transparently serialized using Storable.
+They will be transparently serialized using Storable (preferred) or Data::Dumper.
 
 This method should be called to set the '-data' record returned by searches
 to something useful. If you do not, you will have to maintain the
@@ -1589,7 +1687,7 @@ sub add_index {
 		croak (__PACKAGE__ . "::add_index() - -data for index may not be 'undef' value.");
 	}
 
-	my ($db)                = $self->get(-database);
+	my ($db,$freeze) = $self->get('-database','-freeze');
 	if (not $db) {
 		croak (__PACKAGE__ . "::add_index() - No database opened for use\n");
 	}
@@ -1648,7 +1746,7 @@ sub add_index {
 
 	# Store the -data record. The merged record saves an I/O for reading.
 	my ($raw_index_record) = { '-index' => $index, -data => $data };
-	my $index_record = nfreeze($raw_index_record);
+	my $index_record = &$freeze($raw_index_record);
 	if (not $db->put({ -key => "$INDEX_ENUM_DATA${index_enum}_data", -value => $index_record })) {
 		croak (__PACKAGE__ . "::add_index() - Unable to store '$INDEX_ENUM_DATA${index_enum}_data' -data value\n");
 	}
@@ -3634,13 +3732,13 @@ sub _get_data_for_index_enum {
 		croak (__PACKAGE__ . "::search() - $error_message\n");
 	}
 	my ($index_enum) = $parms->get(-index_enum);
-	my ($db)         = $self->get(-database);
+	my ($db,$thaw)   = $self->get('-database','-thaw');
 	if (not $db) {
 		croak (__PACKAGE__ . "::search() - No database opened for use\n");
 	}
 	my ($data_record) = $db->get({ -key => "$INDEX_ENUM_DATA${index_enum}_data" });
 	return if (not defined $data_record);
-	my ($data) = thaw($data_record);
+	my ($data) = &$thaw($data_record);
 	$data;
 }
 
@@ -3915,13 +4013,13 @@ It is organized into sub-sets of information by database key name space:
 
  ; Counter. Incremented for new groups, decremented for deleted groups.
  number_of_groups        -> # (decimal integer) 
- 
+
  ; Counter. Incremented for new indexes, decremented for deleted indexes.
  number_of_indexes       -> # (decimal integer) 
 
  ; Counter. Incremented for new keys, decremented for deleted keys.
  number_of_keys          -> # (decimal integer) 
- 
+
  ; The 'high water' mark used in assigning new index_enum keys
  index_enum_counter      -> # (12 digit hex number)
 
@@ -3935,9 +4033,9 @@ It is organized into sub-sets of information by database key name space:
  ; Maps the 'first' 'index_enum' for the system 
  ${INDEX_ENUM}first_index_enum     -> index_enum of 'first' index_enum for the system 
 
- ; Data record for the index ("File"). Wrapped using 'Storable' 
+ ; Data record for the index ("File"). Wrapped using 'Storable' or 'Data::Dumper'
  $INDEX_ENUM_DATA<index_enum>_data   -> data
- 
+
  ; The 'high water' mark used in assigning new group_enum keys
  group_enum_counter      -> # (12 digit hex number)
 
