@@ -8,7 +8,7 @@ use vars qw (@ISA $VERSION);
 use strict;
 
 @ISA     = qw(Class::NamedParms);
-$VERSION = "1.00";
+$VERSION = "1.01";
 
 # This is supposed to keep the same database table
 # from being opened more than once. But I'm not sure
@@ -189,7 +189,7 @@ sub open {
   my $dbh = DBI->connect(join(":", "dbi", "mysql", $db_name, $hostname), $username, $password)
     || croak (__PACKAGE__ . "::open() - Couldn't connect to $db_name\n");
 
-  unless ( grep m/^$table$/, $dbh->func('_ListTables') ) {
+  unless ( grep m/^(`?)$table\1$/, $dbh->tables ) {
     if ($lock_mode eq "EX" or $lock_mode eq "UN") {
       my $sth = $dbh->prepare("CREATE TABLE $table (
                                  ii_key CHAR(128) not null primary key,

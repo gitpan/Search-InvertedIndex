@@ -41,3 +41,6 @@
                   This release was driven by the taint issue and the clear bug as crisis items.
                   Hopefully a 1.14 release will be in the not too distant future.
 
+1.14 2003.11.14 - Patch to the MySQL database driver to accomodate changes in DBD::mysql.
+                  Addition of a test for MySQL functionality, Patch and test thanks to
+                  Kate L Pugh <kake@earth.li>.

@@ -10,6 +10,7 @@ WriteMakefile(
                           'Class::NamedParms'       => '1.04',
                           'Tie::FileLRUCache'       => '1.01',
                           'Tie::DB_File::SplitHash' => '1.01',
+                          'Test::More'              => 0,
                         },
     'linkext'        => { LINKTYPE=>'' },    # no link needed
     'dist'           => {'COMPRESS'=>'gzip -9f', 'SUFFIX' => 'gz',

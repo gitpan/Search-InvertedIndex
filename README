@@ -12,51 +12,25 @@ Search::InvertedIndex
  It is designed to allow the easy 'plug in' of any wanted
  backend database in place of DB_File. Requires (as of now)
  'Digest::SHA1', 'DB_File', 'Class::NamedParms', 'Class::ParmList',
- 'Tie::FileLRUCache', and 'Tie::DB_File::SplitHash',
+ 'Tie::FileLRUCache', 'Tie::DB_File::SplitHash' and 'Test::More',
  modules for support. Additionally, it requires either 'Storable' or
  'Data::Dumper' to be installed for data serialization.
 
- Support for MySQL via DBI is also included, but is not tested during installation.
+ Support for MySQL via DBI is also included.
  MySQL use requires that the DBI and DBD::mysql modules be installed.
 
-CHANGES
+ To enable running of the MySQL tests during installation, set the
+ following environment variables:
+  - either SII_TESTDB_NAME (name of database to run tests against)
+        or SII_TESTDB_DSN  (DSN connection string for passing to DBI
+                            - unless you know for sure that you need
+                            this extra flexibility, use SII_TESTDB_NAME)
+  - SII_TESTDB_USER (user to connect to database as)
+  - SII_TESTDB_PASS (password of that user if required for authentication)
+  - SII_TESTDB_HOST (hostname of the database server if not local)
 
- 1.00 1999.06.16 - Initial release
-
- 1.01 1999.06.17 - Documentation fixes and fix to 'close' method in
-                   Search::InvertedIndex::DB::DB_File_SplitHash
-
- 1.02 1999.06.18 - Major bugfix to locking system.
-                   Performance tweaking. Roughly 3x improvement.
-
- 1.03 1999.06.30 - Documentation fixes.
-
- 1.04 1999.07.01 - Documentation fixes and caching system bugfixes.
-                   (never publically released)
-
- 1.05 1999.10.20 - Altered ranking computation on search results
-
- 1.06 1999.10.20 - Removed 'use attrs' usage to improve portability
-
- 1.08 2000.01.25 - Bug fix to multi database code and documentation updates
-
- 1.09 2000.03.23 - Bug fix to 'Search::InvertedIndex::DB:DB_File_SplitHash' submodule
-                   to manage case where 'open' is not performed before 'close' is called.
-
- 1.10 2000.07.05 - Delayed loading of serializer and added option to select
-                   which serializer (Storable or Data::Dumper) to use at instance 'new' time.
-                   This should allow module to be loaded by mod_perl via the 'PerlModule'
-                   conf directive and enable use on platforms that do not support
-                   'Storable' (such as Macintosh).
-
- 1.11 2000.11.29 - Added 'Search::InvertedIndex::DB::Mysql' (authored by
-                   Michael Cramer <cramer@webkist.com>) database driver
-                   to package.
-
- 1.12 2002.04.09 - Squashed bug in removal of an index from a group when the index doesn't
-                   exist in that group that caused index counts for the group to be decremented
-                   in error.
-
+ Note that these tests are destructive.  Do not run them against any
+ database containing data that you wish to keep.
 
 To install:
 

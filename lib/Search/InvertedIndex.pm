@@ -10,7 +10,7 @@ use Search::InvertedIndex::AutoLoader;
 use vars qw (@ISA $VERSION);
 
 @ISA     = qw(Class::NamedParms);
-$VERSION = '1.13';
+$VERSION = '1.14';
 
 # Used to catch attempts to open the same -map
 # to multiple objects simultaneously and to
@@ -235,12 +235,16 @@ determine initialization requirements.
 				   exist in that group that caused index counts for the group to be decremented
 				   in error.
 
- 1.13 2002.09.28 - Interim release. Fixed false error return from 'first_key_in_group' for a group
+ 1.13 2003.09.28 - Interim release. Fixed false error return from 'first_key_in_group' for a group
                    that has not yet had any keys set.  Tightened calling
                    parm parses. Tweaked performance of preload updating code.
                    Added taint fix for stringifier identifier.
                    This release was driven by the taint issue and code bug as crisis items.
                    Hopefully a 1.14 release will be in the not too distant future.
+
+ 1.14 2003.11.14 - Patch to the MySQL database driver to accomodate changes in DBD::mysql.
+                   Addition of a test for MySQL functionality. Patch and test thanks to
+                   Kate L Pugh.
 
 =head2 Public API
 
@@ -3786,7 +3790,7 @@ sub DESTROY {
 
 =head1 VERSION
 
-1.13
+1.14
 
 =head1 COPYRIGHT
 
