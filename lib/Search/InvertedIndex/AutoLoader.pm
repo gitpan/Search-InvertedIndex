@@ -15,15 +15,20 @@ use Search::InvertedIndex::AutoLoader;
 Sets up the autoloader to load the modules in the Search::InvertedIndex
 system on demand.
 
+=head1 CHANGES
+
+1.01 Added Search::InvertedIndex::DB::Mysql to the list of autoloaded modules
+
 =cut
 
-$VERSION = "1.00";
+$VERSION = "1.01";
 
 my $_autoloaded_functions = {};
 
 my (@packageslist) =(
 	'Search::InvertedIndex',
 	'Search::InvertedIndex::DB::DB_File_SplitHash',
+	'Search::InvertedIndex::DB::Mysql',
 	'Search::InvertedIndex::Update',
 	'Search::InvertedIndex::Query',
 	'Search::InvertedIndex::Query::Leaf',

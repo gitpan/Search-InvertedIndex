@@ -1,29 +1,32 @@
 Search::InvertedIndex
 
  A general purpose inverted indexing system suitable for medium
- scale searching. The compiled external modules used are Digest::SHA1 
- (needed because it uses the 'Tie::FileLRUCache' module for 
- performance enhancment on searches) and DB_File (because it 
+ scale searching. The compiled external modules used are Digest::SHA1
+ (needed because it uses the 'Tie::FileLRUCache' module for
+ performance enhancment on searches) and DB_File (because it
  used by the 'Tie::DB_File::SplitHash' module). The module itself
  is Perl with the two exceptions noted above. If you have
  'Digest::SHA1' and 'DB_File' on your system, no compilation is
   required.
 
- It is designed to allow the easy 'plug in' of any wanted 
- backend database in place of DB_File. Requires (as of now) 
- 'Digest::SHA1', 'DB_File', 'Class::NamedParms', 'Class::ParmList', 
- 'Tie::FileLRUCache', and 'Tie::DB_File::SplitHash', 
+ It is designed to allow the easy 'plug in' of any wanted
+ backend database in place of DB_File. Requires (as of now)
+ 'Digest::SHA1', 'DB_File', 'Class::NamedParms', 'Class::ParmList',
+ 'Tie::FileLRUCache', and 'Tie::DB_File::SplitHash',
  modules for support. Additionally, it requires either 'Storable' or
- 'Data::Dumper' to be installed for data serialization. 
+ 'Data::Dumper' to be installed for data serialization.
+
+ Support for MySQL via DBI is also included, but is not tested during installation.
+ MySQL use requires that the DBI and DBD::mysql modules be installed.
 
 CHANGES
 
  1.00 1999.06.16 - Initial release
 
- 1.01 1999.06.17 - Documentation fixes and fix to 'close' method in 
+ 1.01 1999.06.17 - Documentation fixes and fix to 'close' method in
                    Search::InvertedIndex::DB::DB_File_SplitHash
 
- 1.02 1999.06.18 - Major bugfix to locking system. 
+ 1.02 1999.06.18 - Major bugfix to locking system.
                    Performance tweaking. Roughly 3x improvement.
 
  1.03 1999.06.30 - Documentation fixes.
@@ -31,20 +34,24 @@ CHANGES
  1.04 1999.07.01 - Documentation fixes and caching system bugfixes.
                    (never publically released)
 
- 1.05 1999.10.20 - Altered ranking computation on search results  
+ 1.05 1999.10.20 - Altered ranking computation on search results
 
- 1.06 1999.10.20 - Removed 'use attrs' usage to improve portability  
+ 1.06 1999.10.20 - Removed 'use attrs' usage to improve portability
 
  1.08 2000.01.25 - Bug fix to multi database code and documentation updates
 
- 1.09 2000.03.23 - Bug fix to 'Search::InvertedIndex::DB:DB_File_SplitHash' submodule  
-                   to manage case where 'open' is not performed before 'close' is called. 
+ 1.09 2000.03.23 - Bug fix to 'Search::InvertedIndex::DB:DB_File_SplitHash' submodule
+                   to manage case where 'open' is not performed before 'close' is called.
 
  1.10 2000.07.05 - Delayed loading of serializer and added option to select
-                   which serializer (Storable or Data::Dumper) to use at instance 'new' time. 
-                   This should allow module to be loaded by mod_perl via the 'PerlModule' 
+                   which serializer (Storable or Data::Dumper) to use at instance 'new' time.
+                   This should allow module to be loaded by mod_perl via the 'PerlModule'
                    conf directive and enable use on platforms that do not support
                    'Storable' (such as Macintosh).
+
+ 1.11 2000.11.29 - Added 'Search::InvertedIndex::DB::Mysql' (authored by
+                   Michael Cramer <cramer@webkist.com>) database driver
+                   to package.
 
 To install:
 
@@ -56,6 +63,6 @@ make install
 Type 'perldoc Search::InvertedIndex' after installation for the documentation or
 go to <URL:http://www.nihongo.org/snowhare/utilities/modules/search-invertedindex/>
 
-Copyright 1999, Benjamin Franz (<URL:http://www.nihongo.org/snowhare/>) and 
+Copyright 1999, Benjamin Franz (<URL:http://www.nihongo.org/snowhare/>) and
 FreeRun Technologies, Inc. (<URL:http://www.freeruntech.com/>). All Rights Reserved.
 This software may be copied or redistributed under the same terms as Perl itelf.
