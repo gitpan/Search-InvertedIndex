@@ -142,9 +142,9 @@ sub entry {
 	my ($entry_data) = $inv_map->_get_data_for_index_enum({ -index_enum => $index_enum });
 	return if (not defined $entry_data);
 	if (not wantarray) {
-		return $entry_data->{-index}; 
+		return $entry_data->{'-index'}; 
 	}
-	return ($entry_data->{-index},$entry_data->{-data},$entry->{-ranking});
+	return ($entry_data->{'-index'},$entry_data->{-data},$entry->{-ranking});
 }
 
 ####################################################################

@@ -90,7 +90,7 @@ sub new {
     	                         -legal => [qw(-keys -data)],
     	                      -required => [qw(-group -index)],
     	                      -defaults => { -data => undef, 
-							                 -keys => {},
+							                 '-keys' => {},
 										  },
                                });
    	if (not defined $parms) {

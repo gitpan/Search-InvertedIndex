@@ -1,6 +1,6 @@
 package Search::InvertedIndex;
 
-# $RCSfile: InvertedIndex.pm,v $ $Revision: 1.30 $ $Date: 1999/10/20 16:51:04 $ $Author: snowhare $
+# $RCSfile: InvertedIndex.pm,v $ $Revision: 1.31 $ $Date: 2000/01/25 19:53:26 $ $Author: snowhare $
 
 use strict;
 use Carp;
@@ -11,7 +11,7 @@ use Search::InvertedIndex::AutoLoader;
 use vars qw (@ISA $VERSION);
 
 @ISA     = qw(Class::NamedParms);
-$VERSION = "1.06";
+$VERSION = "1.08";
 
 # Used to catch attempts to open the same -map 
 # to multiple objects simultaneously and to
@@ -74,11 +74,72 @@ Search::InvertedIndex - A manager for inverted index maps
 
 
   my $inv_map = Search::Inverted->new({ -database => $database, -scratch_database => $scratch_database });
-  my $query = Search::InvertedIndex::Query->new(...);
-  my $result = $inv_map->query({ -query => $query });
 
-  my $update = Search::InvertedIndex::Update->new(...);
+##########################################################
+# Example Update
+##########################################################
+  
+  my $index_data = "Some scalar - complex structure refs are ok";
+
+  my $update = Search::InvertedIndex::Update->new({
+                               -group => 'keywords',
+                               -index => 'http://www.nihongo.org/',
+                                -data => $index_data,
+                                -keys => {
+                                            'some' => 10,
+                                          'scalar' => 20,
+                                         'complex' => 15,
+                                       'structure' => 15,
+                                            'refs' => 15,
+                                             'are' => 15,
+                                              'ok' => 15,
+                                         },
+                                         });
   my $result = $inv_map->update({ -update => $update });
+
+##########################################################
+# Example Query
+# '-nodes' is an anon list of Search::InvertedIndex::Query
+# objects (this allows constructing complex booleans by 
+# nesting).
+#
+# '-leafs' is an anon list of Search::InvertedIndex::Query::Leaf
+# objects (used for individual search terms).
+#
+##########################################################
+
+  my $query_leaf1 = Search::InvertedIndex::Query::Leaf->new({
+                                          -key => 'complex',
+                                        -group => 'keywords',
+                                       -weight => 1,
+                                       });
+
+  my $query_leaf2 = Search::InvertedIndex::Query::Leaf->new({
+                                          -key => 'structure',
+                                        -group => 'keywords',
+                                       -weight => 1,
+                                       });
+  my $query_leaf3 = Search::InvertedIndex::Query::Leaf->new({
+                                          -key => 'gold',
+                                        -group => 'keywords',
+                                       -weight => 1,
+                                       });
+  my $query1 = Search::InvertedIndex::Query->new({
+                     -logic => 'and',
+                    -weight => 1,
+                     -nodes => [],
+                     -leafs => [$query_leaf1,$query_leaf2],
+                  });
+  my $query2 = Search::InvertedIndex::Query->new({
+                     -logic => 'or',
+                    -weight => 1,
+                     -nodes => [$query1],
+                     -leafs => [$query_leaf3],
+                  });
+
+  my $result = $inv_map->search({ -query => $query2 });
+
+##########################################################
 
   $inv_map->close;
 
@@ -107,6 +168,11 @@ of records can be searched extremely quickly.
  1.05 1999.10.20 - Altered ranking computation on search results  
 
  1.06 1999.10.20 - Removed 'use attrs' usage to improve portability  
+
+ 1.07 1999.11.09 - "Cosmetic" changes to avoid warnings in Perl 5.004  
+
+ 1.08 2000.01.25 - Bugfix to 'Search::InvertedIndex::DB:DB_File_SplitHash' submodule  
+                   and documentation additions/fixes
 
 =head2 Public API
 
@@ -339,12 +405,12 @@ sub update {
 	}
 
 	# Delete the existing -index/-group data 
-	$self->remove_index_from_group({ -group => $group, -index => $index});
+	$self->remove_index_from_group({ -group => $group, '-index' => $index});
 
 	# Create the -index and store the -data record for the -index as needed
 	my $index_enum;
 	if (defined $index_data) {
-		$index_enum = $self->add_index({ -index => $index, -data => $index_data });
+		$index_enum = $self->add_index({ '-index' => $index, -data => $index_data });
 	} else {
 		$index_enum = $db->get({ -key => "$INDEX$index" });
 		if (not defined $index_enum) {
@@ -690,7 +756,7 @@ sub update_group {
     	# Create the -index and store the -data record for the -index as needed
     	my $index_enum;
     	if (defined $index_data) {
-    		$index_enum = $self->add_index({ -index => $index, -data => $index_data });
+    		$index_enum = $self->add_index({ '-index' => $index, -data => $index_data });
     	} else {
     		$index_enum = $db->get({ -key => "$INDEX$index" });
     		if (not defined $index_enum) {
@@ -699,7 +765,7 @@ sub update_group {
     	}
 
 		# Add the -index to the update group
-		$self->add_index_to_group({ -group => $group, -index => $index });
+		$self->add_index_to_group({ -group => $group, '-index' => $index });
     
     	my $new_keys = 0;
     	my $indexed_keys = {};
@@ -1591,7 +1657,7 @@ sub add_index {
 	}
 
 	# Store the -data record. The merged record saves an I/O for reading.
-	my ($raw_index_record) = { -index => $index, -data => $data };
+	my ($raw_index_record) = { '-index' => $index, -data => $data };
 	my $index_record = nfreeze($raw_index_record);
 	if (not $db->put({ -key => "$INDEX_ENUM_DATA${index_enum}_data", -value => $index_record })) {
 		croak (__PACKAGE__ . "::add_index() - Unable to store '$INDEX_ENUM_DATA${index_enum}_data' -data value\n");
@@ -1611,7 +1677,7 @@ sub add_index {
 Adds an index entry to a group. If the index does not already
 exist in the system, adds it to the system as well.
 
-Example: $inv_map->add_index_to_group({ -group => $group, -index => $index[, -data => $data]});
+Example: $inv_map->add_index_to_group({ -group => $group, '-index' => $index[, -data => $data]});
 
 Returns the 'index_enum' for the index record.
 
@@ -1663,7 +1729,7 @@ sub add_index_to_group {
 		if (not defined $data) {
 			croak (__PACKAGE__ . "::add_index_to_group() - Attempted to add completely new -index '$index with no defined -data' \n");
 		}
-		$index_enum = $self->add_index({ -index => $index, -data => $data });
+		$index_enum = $self->add_index({ '-index' => $index, -data => $data });
 	}
 	
 	# Update the INDEX_ENUM_GROUP_CHAIN  and number of indexes for the group as necessary
@@ -2487,7 +2553,7 @@ sub remove_index_from_all {
 				croak (__PACKAGE__ . "::remove_index_from_all() - Database corrupt. Unable to locate '${GROUP_ENUM}$group_enum' record for system.\n");
 			}
 			my ($prev_group_enum,$next_group_enum,$group) = $group_record =~ m/^(.{12}) (.{12}) (.*)$/s;
-			$self->remove_index_from_group({ -group => $group, -index => $index });
+			$self->remove_index_from_group({ -group => $group, '-index' => $index });
 			$group_enum = $next_group_enum;
 		}
 	}
@@ -2748,7 +2814,7 @@ sub remove_key_from_group {
 			croak (__PACKAGE__ . "::remove_key_from_group() - Unable to locate '$INDEX_ENUM$index_enum' record.\n")
 		}
 		my ($prev_index_enum,$next_index_enum,$index) = $index_record =~ m/^(.{12}) (.{12}) (.*)$/s;
-		$self->remove_index_from_group({ -group => $group, -index => $index });
+		$self->remove_index_from_group({ -group => $group, '-index' => $index });
 
 	}
 

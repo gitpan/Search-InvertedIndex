@@ -99,7 +99,7 @@ sub test11 {
     foreach my $index (@index_list) {
         my $entry = $test_set->{$index};
         my $data = $entry->{-data};
-        my $keys = $entry->{-keys};
+        my $keys = $entry->{'-keys'};
         my @test_keys = keys %$keys;
         foreach my $key (@test_keys) {
             $key_counter->{$key}++;
@@ -107,8 +107,8 @@ sub test11 {
             $per_key_indexes->{$key}->{$index}++;
         }
         my $update = Search::InvertedIndex::Update->new({ 
-                 -group => $group,   -index => $index, 
-                  -data => $data,     -keys => $keys });
+                 -group => $group,   '-index' => $index, 
+                  -data => $data,     '-keys' => $keys });
         $inv_map->preload_update({ -update => $update });
     }
     $inv_map->update_group({ -group => $group, -block_size => 256 });
@@ -117,7 +117,7 @@ sub test11 {
 
     foreach my $item1 (@key_list[0..1]) {
         # One item search
-        my $search = Search::InvertedIndex::Query::Leaf->new({ -group => $group, -key => $item1 });
+        my $search = Search::InvertedIndex::Query::Leaf->new({ -group => $group, '-key' => $item1 });
         my $query  = Search::InvertedIndex::Query->new({ -leafs => [$search]});
         my $result = $inv_map->search({ -query => $query });
         if (not defined $result) {
@@ -145,8 +145,8 @@ sub test11 {
 
         # Simple two item search, AND condition
         foreach my $item2 (@key_list[0..3]) {
-            $search     = Search::InvertedIndex::Query::Leaf->new({ -group => $group, -key => $item1 });
-            my $search2 = Search::InvertedIndex::Query::Leaf->new({ -group => $group, -key => $item2 });
+            $search     = Search::InvertedIndex::Query::Leaf->new({ -group => $group, '-key' => $item1 });
+            my $search2 = Search::InvertedIndex::Query::Leaf->new({ -group => $group, '-key' => $item2 });
             $query      = Search::InvertedIndex::Query->new({ -leafs => [$search,$search2], -logic => 'and'});
             $result     = $inv_map->search({ -query => $query });
             my $expected = {};
@@ -179,8 +179,8 @@ sub test11 {
             }
     
             # Simple two item search, OR condition
-            $search  = Search::InvertedIndex::Query::Leaf->new({ -group => $group, -key => $item1 });
-            $search2 = Search::InvertedIndex::Query::Leaf->new({ -group => $group, -key => $item2 });
+            $search  = Search::InvertedIndex::Query::Leaf->new({ -group => $group, '-key' => $item1 });
+            $search2 = Search::InvertedIndex::Query::Leaf->new({ -group => $group, '-key' => $item2 });
             $query   = Search::InvertedIndex::Query->new({ -leafs => [$search,$search2], -logic => 'or'});
             $result  = $inv_map->search({ -query => $query });
             $expected = {};
@@ -217,8 +217,8 @@ sub test11 {
             }
     
             # Simple two item search, NAND condition
-            $search  = Search::InvertedIndex::Query::Leaf->new({ -group => $group, -key => $item1 });
-            $search2 = Search::InvertedIndex::Query::Leaf->new({ -group => $group, -key => $item2 });
+            $search  = Search::InvertedIndex::Query::Leaf->new({ -group => $group, '-key' => $item1 });
+            $search2 = Search::InvertedIndex::Query::Leaf->new({ -group => $group, '-key' => $item2 });
             $query  = Search::InvertedIndex::Query->new({ -leafs => [$search,$search2], -logic => 'nand'});
             $result = $inv_map->search({ -query => $query });
             $expected = {};
@@ -301,7 +301,7 @@ sub test10 {
     foreach my $index (@index_list) {
         my $entry = $test_set->{$index};
         my $data = $entry->{-data};
-        my $keys = $entry->{-keys};
+        my $keys = $entry->{'-keys'};
         my @test_keys = keys %$keys;
         foreach my $key (@test_keys) {
             $key_counter->{$key}++;
@@ -309,8 +309,8 @@ sub test10 {
             $per_key_indexes->{$key}->{$index}++;
         }
         my $update = Search::InvertedIndex::Update->new({ 
-                 -group => $group,   -index => $index, 
-                  -data => $data,     -keys => $keys });
+                 -group => $group,   '-index' => $index, 
+                  -data => $data,     '-keys' => $keys });
         $inv_map->update({ -update => $update });
     }
     my @key_list = keys (%$key_counter);
@@ -319,7 +319,7 @@ sub test10 {
     # Test searches
     foreach my $item1 (@key_list[0..1]) {
         # One item search
-        my $search = Search::InvertedIndex::Query::Leaf->new({ -group => $group, -key => $item1 });
+        my $search = Search::InvertedIndex::Query::Leaf->new({ -group => $group, '-key' => $item1 });
         my $query  = Search::InvertedIndex::Query->new({ -leafs => [$search]});
         my $result = $inv_map->search({ -query => $query });
         if (not defined $result) {
@@ -347,8 +347,8 @@ sub test10 {
 
         # Simple two item search, AND condition
         foreach my $item2 (@key_list[0..3]) {
-            $search     = Search::InvertedIndex::Query::Leaf->new({ -group => $group, -key => $item1 });
-            my $search2 = Search::InvertedIndex::Query::Leaf->new({ -group => $group, -key => $item2 });
+            $search     = Search::InvertedIndex::Query::Leaf->new({ -group => $group, '-key' => $item1 });
+            my $search2 = Search::InvertedIndex::Query::Leaf->new({ -group => $group, '-key' => $item2 });
             $query      = Search::InvertedIndex::Query->new({ -leafs => [$search,$search2], -logic => 'and'});
             $result     = $inv_map->search({ -query => $query });
             my $expected = {};
@@ -470,10 +470,10 @@ sub test10 {
     foreach my $index (@index_list) {
         my $entry = $test_set->{$index};
         my $data = $entry->{-data};
-        my $keys = $entry->{-keys};
+        my $keys = $entry->{'-keys'};
         my $update = Search::InvertedIndex::Update->new({ 
-                 -group => $group,   -index => $index, 
-                  -data => $data,     -keys => $keys });
+                 -group => $group,   '-index' => $index, 
+                  -data => $data,     '-keys' => $keys });
         $inv_map->preload_update({ -update => $update });
     }
     $inv_map->update_group({ -group => $group, -block_size => 256 });
@@ -658,15 +658,15 @@ sub test9 {
     foreach my $index (@index_list) {
         my $entry = $test_set->{$index};
         my $data = $entry->{-data};
-        my $keys = $entry->{-keys};
+        my $keys = $entry->{'-keys'};
         my @test_keys = keys %$keys;
         foreach my $key (@test_keys) {
             $key_counter->{$key}++;
             $per_index_key_counter->{$index}->{$key}++;
         }
         my $update = Search::InvertedIndex::Update->new({ 
-                 -group => $group,   -index => $index, 
-                  -data => $data,     -keys => $keys });
+                 -group => $group,   '-index' => $index, 
+                  -data => $data,     '-keys' => $keys });
         $inv_map->preload_update({ -update => $update });
     }
     my @key_list = keys (%$key_counter);
@@ -684,7 +684,7 @@ sub test9 {
     }
     # Check the individual entries
     foreach my $index (@index_list) {
-        my $data = $inv_map->data_for_index({ -index => $index });
+        my $data = $inv_map->data_for_index({ '-index' => $index });
         if (not defined $data) {
             return "failed - Could not read data for index '$index'\n";
         }
@@ -763,7 +763,7 @@ sub test9 {
         }
         my @errors = ();
         $test_index_names{$index}++;    
-        while (my $next_index = $inv_map->next_index_in_group({ -group => $group, -index => $index })) {
+        while (my $next_index = $inv_map->next_index_in_group({ -group => $group, '-index' => $index })) {
             $index = $next_index;
             $test_index_names{$index}++;    
             if ($test_index_names{$index} > 1) {
@@ -782,15 +782,15 @@ sub test9 {
     foreach my $index (@index_list) {
         my $entry = $test_set->{$index};
         my $data = $entry->{-data};
-        my $keys = $entry->{-keys};
+        my $keys = $entry->{'-keys'};
         my @test_keys = keys %$keys;
         foreach my $key (@test_keys) {
             $key_counter->{$key}++;
             $per_index_key_counter->{$index}->{$key}++;
         }
         my $update = Search::InvertedIndex::Update->new({ 
-                 -group => $group,   -index => $index, 
-                  -data => $data,     -keys => $keys });
+                 -group => $group,   '-index' => $index, 
+                  -data => $data,     '-keys' => $keys });
         $inv_map->preload_update({ -update => $update });
     }
     $inv_map->update_group({ -group => $group, -block_size => 256 });
@@ -830,7 +830,7 @@ sub test9 {
         }
         my @errors = ();
         $test_index_names{$index}++;    
-        while (my $next_index = $inv_map->next_index_in_group({ -group => $group, -index => $index })) {
+        while (my $next_index = $inv_map->next_index_in_group({ -group => $group, '-index' => $index })) {
             $index = $next_index;
             $test_index_names{$index}++;    
             if ($test_index_names{$index} > 1) {
@@ -863,7 +863,7 @@ sub make_dataset {
         for (my $key_counter=0; $key_counter < $max_keys; $key_counter++) {
             my $key     = int (rand ($range/3) +rand($range/3) + rand($range/3));
             my $ranking = int (rand (60000)) - 30000;
-            $dataset->{$index}->{-keys}->{$key} = $ranking; 
+            $dataset->{$index}->{'-keys'}->{$key} = $ranking; 
         }
     }
     $dataset;
@@ -901,22 +901,22 @@ sub test8 {
     foreach my $index (@index_list) {
         my $entry = $test_set->{$index};
         my $data = $entry->{-data};
-        my $keys = $entry->{-keys};
+        my $keys = $entry->{'-keys'};
         my @test_keys = keys %$keys;
         foreach my $key (@test_keys) {
             $key_counter->{$key}++;
             $per_index_key_counter->{$index}->{$key}++;
         }
         my $update = Search::InvertedIndex::Update->new({ 
-                 -group => $group,   -index => $index, 
-                  -data => $data,     -keys => $keys });
+                 -group => $group,   '-index' => $index, 
+                  -data => $data,     '-keys' => $keys });
         $inv_map->update({ -update => $update });
     }
     my @key_list = keys (%$key_counter);
 
     # Check that the index data is readable and correct
     foreach my $index (@index_list) {
-        my $data = $inv_map->data_for_index({ -index => $index });
+        my $data = $inv_map->data_for_index({ '-index' => $index });
         if (not defined $data) {
             return "failed - Could not read data for index '$index'\n";
         }
@@ -974,7 +974,7 @@ sub test8 {
         }
         my @errors = ();
         $test_index_names{$index}++;    
-        while (my $next_index = $inv_map->next_index_in_group({ -group => $group, -index => $index })) {
+        while (my $next_index = $inv_map->next_index_in_group({ -group => $group, '-index' => $index })) {
             $index = $next_index;
             $test_index_names{$index}++;    
             if ($test_index_names{$index} > 1) {
@@ -993,15 +993,15 @@ sub test8 {
     foreach my $index (@index_list) {
         my $entry = $test_set->{$index};
         my $data = $entry->{-data};
-        my $keys = $entry->{-keys};
+        my $keys = $entry->{'-keys'};
         my @test_keys = keys %$keys;
         foreach my $key (@test_keys) {
             $key_counter->{$key}++;
             $per_index_key_counter->{$index}->{$key}++;
         }
         my $update = Search::InvertedIndex::Update->new({ 
-                 -group => $group,   -index => $index, 
-                  -data => $data,     -keys => $keys });
+                 -group => $group,   '-index' => $index, 
+                  -data => $data,     '-keys' => $keys });
         $inv_map->update({ -update => $update });
     }
     @key_list = keys (%$key_counter);
@@ -1040,7 +1040,7 @@ sub test8 {
         }
         my @errors = ();
         $test_index_names{$index}++;    
-        while (my $next_index = $inv_map->next_index_in_group({ -group => $group, -index => $index })) {
+        while (my $next_index = $inv_map->next_index_in_group({ -group => $group, '-index' => $index })) {
             $index = $next_index;
             $test_index_names{$index}++;    
             if ($test_index_names{$index} > 1) {
@@ -1059,15 +1059,15 @@ sub test8 {
     foreach my $index (@index_list) {
         my $entry = $test_set->{$index};
         my $data = $entry->{-data};
-        my $keys = $entry->{-keys};
+        my $keys = $entry->{'-keys'};
         my @test_keys = keys %$keys;
         foreach my $key (@test_keys) {
             $key_counter->{$key}++;
             $per_index_key_counter->{$index}->{$key}++;
         }
         my $update = Search::InvertedIndex::Update->new({ 
-                 -group => $group,   -index => $index, 
-                  -data => $data,     -keys => $keys });
+                 -group => $group,   '-index' => $index, 
+                  -data => $data,     '-keys' => $keys });
         $inv_map->update({ -update => $update });
     }
     @key_list = keys (%$key_counter);
@@ -1076,7 +1076,7 @@ sub test8 {
     # Progessively clear the dataset using update
     foreach my $index (@index_list) {
         my $update = Search::InvertedIndex::Update->new({
-            -group => $group, -index => $index });
+            -group => $group, '-index' => $index });
         $inv_map->update({ -update => $update });
     }
    
@@ -1118,15 +1118,15 @@ sub test7 {
     foreach my $index (@index_list) {
         my $entry = $test_set->{$index};
         my $data = $entry->{-data};
-        my $keys = $entry->{-keys};
+        my $keys = $entry->{'-keys'};
         my @test_keys = keys %$keys;
         foreach my $key (@test_keys) {
             $key_counter->{$key}++;
             $per_index_key_counter->{$index}->{$key}++;
         }
-        $inv_map->add_index({ -index => $index, -data => $data });
+        $inv_map->add_index({ '-index' => $index, -data => $data });
         foreach my $key (@test_keys) {
-            $inv_map->add_entry_to_group ({ -group => $group, -index => $index, 
+            $inv_map->add_entry_to_group ({ -group => $group, '-index' => $index, 
                                               -key => $key, -ranking => $keys->{$key}, });
         }
     }
@@ -1134,7 +1134,7 @@ sub test7 {
 
     # Check that the index data is readable and correct
     foreach my $index (@index_list) {
-        my $data = $inv_map->data_for_index({ -index => $index });
+        my $data = $inv_map->data_for_index({ '-index' => $index });
         if (not defined $data) {
             return "failed - Could not read data for index '$index'\n";
         }
@@ -1192,7 +1192,7 @@ sub test7 {
         }
         my @errors = ();
         $test_index_names{$index}++;    
-        while (my $next_index = $inv_map->next_index_in_group({ -group => $group, -index => $index })) {
+        while (my $next_index = $inv_map->next_index_in_group({ -group => $group, '-index' => $index })) {
             $index = $next_index;
             $test_index_names{$index}++;    
             if ($test_index_names{$index} > 1) {
@@ -1211,15 +1211,15 @@ sub test7 {
     foreach my $index (@index_list) {
         my $entry = $test_set->{$index};
         my $data = $entry->{-data};
-        my $keys = $entry->{-keys};
+        my $keys = $entry->{'-keys'};
         my @test_keys = keys %$keys;
         foreach my $key (@test_keys) {
             $key_counter->{$key}++;
             $per_index_key_counter->{$index}->{$key}++;
         }
-        $inv_map->add_index({ -index => $index, -data => $data });
+        $inv_map->add_index({ '-index' => $index, -data => $data });
         foreach my $key (@test_keys) {
-            $inv_map->add_entry_to_group ({ -group => $group, -index => $index, 
+            $inv_map->add_entry_to_group ({ -group => $group, '-index' => $index, 
                                               -key => $key, -ranking => $keys->{$key}, });
         }
     }
@@ -1259,7 +1259,7 @@ sub test7 {
         }
         my @errors = ();
         $test_index_names{$index}++;    
-        while (my $next_index = $inv_map->next_index_in_group({ -group => $group, -index => $index })) {
+        while (my $next_index = $inv_map->next_index_in_group({ -group => $group, '-index' => $index })) {
             $index = $next_index;
             $test_index_names{$index}++;    
             if ($test_index_names{$index} > 1) {
@@ -1308,16 +1308,16 @@ sub test6 {
     foreach my $index (@index_list) {
         my $entry = $test_set->{$index};
         my $data = $entry->{-data};
-        my $keys = $entry->{-keys};
+        my $keys = $entry->{'-keys'};
         my @test_keys = keys %$keys;
         foreach my $key (@test_keys) {
             $key_counter->{$key}++;
             $per_index_key_counter->{$index}->{$key}++;
         }
-        $inv_map->add_index({ -index => $index, -data => $data });
+        $inv_map->add_index({ '-index' => $index, -data => $data });
         foreach my $key (@test_keys) {
-            $inv_map->add_entry_to_group ({ -group => $group, -index => $index, 
-                                              -key => $key, -ranking => $keys->{$key}, });
+            $inv_map->add_entry_to_group ({ -group => $group, '-index' => $index, 
+                                              '-key' => $key, -ranking => $keys->{$key}, });
         }
     }
     @key_list = keys (%$key_counter);
@@ -1378,7 +1378,7 @@ sub test6 {
         }
         my @errors = ();
         $test_index_names{$index}++;    
-        while (my $next_index = $inv_map->next_index_in_group({ -group => $group, -index => $index })) {
+        while (my $next_index = $inv_map->next_index_in_group({ -group => $group, '-index' => $index })) {
             $index = $next_index;
             $test_index_names{$index}++;    
             if ($test_index_names{$index} > 1) {
@@ -1389,7 +1389,7 @@ sub test6 {
             return "failed - Indexes (","@errors",") were read more than once (left)\n";
         }
         my $delete_index = shift @index_list;
-        if (not $inv_map->remove_index_from_group({ -group => $group, -index => $delete_index})) {
+        if (not $inv_map->remove_index_from_group({ -group => $group, '-index' => $delete_index})) {
             return "failed - remove_index_from_group failed to remove index '$delete_index' from group '$group' (left)\n";
         }
     }    
@@ -1402,15 +1402,15 @@ sub test6 {
     foreach my $index (@index_list) {
         my $entry = $test_set->{$index};
         my $data = $entry->{-data};
-        my $keys = $entry->{-keys};
+        my $keys = $entry->{'-keys'};
         my @test_keys = keys %$keys;
         foreach my $key (@test_keys) {
             $key_counter->{$key}++;
             $per_index_key_counter->{$index}->{$key}++;
         }
-        $inv_map->add_index({ -index => $index, -data => $data });
+        $inv_map->add_index({ '-index' => $index, -data => $data });
         foreach my $key (@test_keys) {
-            $inv_map->add_entry_to_group ({ -group => $group, -index => $index, 
+            $inv_map->add_entry_to_group ({ -group => $group, '-index' => $index, 
                                               -key => $key, -ranking => $keys->{$key}, });
         }
     }
@@ -1426,7 +1426,7 @@ sub test6 {
         }
         my @errors = ();
         $test_index_names{$index}++;    
-        while (my $next_index = $inv_map->next_index_in_group({ -group => $group, -index => $index })) {
+        while (my $next_index = $inv_map->next_index_in_group({ -group => $group, '-index' => $index })) {
             $index = $next_index;
             $test_index_names{$index}++;    
             if ($test_index_names{$index} > 1) {
@@ -1437,7 +1437,7 @@ sub test6 {
             return "failed - Indexes (","@errors",") were read more than once (right)\n";
         }
         my $delete_index = pop @index_list;
-        if (not $inv_map->remove_index_from_group({ -group => $group, -index => $delete_index})) {
+        if (not $inv_map->remove_index_from_group({ -group => $group, '-index' => $delete_index})) {
             return "failed - remove_index_from_group failed to remove index '$delete_index' from group '$group' (right)\n";
         }
     }
@@ -1451,15 +1451,15 @@ sub test6 {
     foreach my $index (@index_list) {
         my $entry = $test_set->{$index};
         my $data = $entry->{-data};
-        my $keys = $entry->{-keys};
+        my $keys = $entry->{'-keys'};
         my @test_keys = keys %$keys;
         foreach my $key (@test_keys) {
             $key_counter->{$key}++;
         }
-        $inv_map->add_index({ -index => $index, -data => $data });
+        $inv_map->add_index({ '-index' => $index, -data => $data });
         foreach my $key (@test_keys) {
-            $inv_map->add_entry_to_group ({ -group => $group, -index => $index, 
-                                              -key => $key, -ranking => $keys->{$key}, });
+            $inv_map->add_entry_to_group ({ -group => $group, '-index' => $index, 
+                                              '-key' => $key, -ranking => $keys->{$key}, });
         }
     }
     @key_list = keys %$key_counter;
@@ -1496,7 +1496,7 @@ sub test6 {
         }
         my @errors = ();
         $test_index_names{$index}++;    
-        while (my $next_index = $inv_map->next_index_in_group({ -group => $group, -index => $index })) {
+        while (my $next_index = $inv_map->next_index_in_group({ -group => $group, '-index' => $index })) {
             $index = $next_index;
             $test_index_names{$index}++;    
             if ($test_index_names{$index} > 1) {
@@ -1507,7 +1507,7 @@ sub test6 {
             return "failed - Indexes (","@errors",") were read more than once (left)\n";
         }
         my $delete_index = shift @index_list;
-        if (not $inv_map->remove_index_from_all({ -index => $delete_index})) {
+        if (not $inv_map->remove_index_from_all({ '-index' => $delete_index})) {
             return "failed - remove_index_from_all failed to remove index '$delete_index'(left)\n";
         }
     }    
@@ -1519,14 +1519,14 @@ sub test6 {
     foreach my $index (@index_list) {
         my $entry = $test_set->{$index};
         my $data = $entry->{-data};
-        my $keys = $entry->{-keys};
+        my $keys = $entry->{'-keys'};
         my @test_keys = keys %$keys;
         foreach my $key (@test_keys) {
             $key_counter->{$key}++;
         }
-        $inv_map->add_index({ -index => $index, -data => $data });
+        $inv_map->add_index({ '-index' => $index, -data => $data });
         foreach my $key (@test_keys) {
-            $inv_map->add_entry_to_group ({ -group => $group, -index => $index, 
+            $inv_map->add_entry_to_group ({ -group => $group, '-index' => $index, 
                                               -key => $key, -ranking => $keys->{$key}, });
         }
     }
@@ -1542,7 +1542,7 @@ sub test6 {
         }
         my @errors = ();
         $test_index_names{$index}++;    
-        while (my $next_index = $inv_map->next_index_in_group({ -group => $group, -index => $index })) {
+        while (my $next_index = $inv_map->next_index_in_group({ -group => $group, '-index' => $index })) {
             $index = $next_index;
             $test_index_names{$index}++;    
             if ($test_index_names{$index} > 1) {
@@ -1553,7 +1553,7 @@ sub test6 {
             return "failed - Indexes (","@errors",") were read more than once (right)\n";
         }
         my $delete_index = pop @index_list;
-        if (not $inv_map->remove_index_from_all({ -index => $delete_index})) {
+        if (not $inv_map->remove_index_from_all({ '-index' => $delete_index})) {
             return "failed - remove_index_from_all failed to remove index '$delete_index' (right)\n";
         }
     }
@@ -1567,14 +1567,14 @@ sub test6 {
     foreach my $index (@index_list) {
         my $entry = $test_set->{$index};
         my $data = $entry->{-data};
-        my $keys = $entry->{-keys};
+        my $keys = $entry->{'-keys'};
         my @test_keys = keys %$keys;
         foreach my $key (@test_keys) {
             $key_counter->{$key}++;
         }
-        $inv_map->add_index({ -index => $index, -data => $data });
+        $inv_map->add_index({ '-index' => $index, -data => $data });
         foreach my $key (@test_keys) {
-            $inv_map->add_entry_to_group ({ -group => $group, -index => $index, 
+            $inv_map->add_entry_to_group ({ -group => $group, '-index' => $index, 
                                               -key => $key, -ranking => $keys->{$key}, });
         }
     }
@@ -1590,7 +1590,7 @@ sub test6 {
         }
         my @errors = ();
         $test_index_names{$index}++;    
-        while (my $next_index = $inv_map->next_index({ -index => $index })) {
+        while (my $next_index = $inv_map->next_index({ '-index' => $index })) {
             $index = $next_index;
             $test_index_names{$index}++;    
             if ($test_index_names{$index} > 1) {
@@ -1601,7 +1601,7 @@ sub test6 {
             return "failed - Indexes (","@errors",") were read more than once (left)\n";
         }
         my $delete_index = shift @index_list;
-        if (not $inv_map->remove_index_from_all({ -index => $delete_index})) {
+        if (not $inv_map->remove_index_from_all({ '-index' => $delete_index})) {
             return "failed - remove_index_from_all failed to remove index '$delete_index'(left)\n";
         }
         if ($inv_map->number_of_indexes != ($#index_list+1)) {
@@ -1616,15 +1616,15 @@ sub test6 {
     foreach my $index (@index_list) {
         my $entry = $test_set->{$index};
         my $data = $entry->{-data};
-        my $keys = $entry->{-keys};
+        my $keys = $entry->{'-keys'};
         my @test_keys = keys %$keys;
         foreach my $key (@test_keys) {
             $key_counter->{$key}++;
         }
-        $inv_map->add_index({ -index => $index, -data => $data });
+        $inv_map->add_index({ '-index' => $index, -data => $data });
         foreach my $key (@test_keys) {
-            $inv_map->add_entry_to_group ({ -group => $group, -index => $index, 
-                                              -key => $key, -ranking => $keys->{$key}, });
+            $inv_map->add_entry_to_group ({ -group => $group, '-index' => $index, 
+                                              '-key' => $key, -ranking => $keys->{$key}, });
         }
     }
     @key_list = keys %$key_counter;
@@ -1639,7 +1639,7 @@ sub test6 {
         }
         my @errors = ();
         $test_index_names{$index}++;    
-        while (my $next_index = $inv_map->next_index({-index => $index })) {
+        while (my $next_index = $inv_map->next_index({'-index' => $index })) {
             $index = $next_index;
             $test_index_names{$index}++;    
             if ($test_index_names{$index} > 1) {
@@ -1650,7 +1650,7 @@ sub test6 {
             return "failed - Indexes (","@errors",") were read more than once (right)\n";
         }
         my $delete_index = pop @index_list;
-        if (not $inv_map->remove_index_from_all({ -index => $delete_index})) {
+        if (not $inv_map->remove_index_from_all({ '-index' => $delete_index})) {
             return "failed - remove_index_from_all failed to remove index '$delete_index' (right)\n";
         }
         if ($inv_map->number_of_indexes != ($#index_list+1)) {
@@ -1687,7 +1687,7 @@ sub test5 {
     # Explicitly add a list of indexes
     my (@test_indexes) = ('blah','hello','whaah!');    
     foreach my $index (@test_indexes) {
-        $inv_map->add_index({ -index => $index, -data => {}, });
+        $inv_map->add_index({ '-index' => $index, -data => {}, });
     }
 
     # Check that there are the correct number of indexes in the system.
@@ -1724,7 +1724,7 @@ sub test5 {
         }
         my @errors = ();
         $test_index_names{$index}++;    
-        while (my $next_index = $inv_map->next_index({ -index => $index })) {
+        while (my $next_index = $inv_map->next_index({ '-index' => $index })) {
             $index = $next_index;
             $test_index_names{$index}++;    
             if ($test_index_names{$index} > 1) {
@@ -1735,7 +1735,7 @@ sub test5 {
             return "failed - Indexes (","@errors",") were read more than once (left)\n";
         }
         my $delete_index = pop @test_indexes;
-        if (not $inv_map->remove_index_from_all({ -index => $delete_index})) {
+        if (not $inv_map->remove_index_from_all({ '-index' => $delete_index})) {
             return "failed - remove_index_from_all failed to remove index '$delete_index' (left)\n";
         }
     }    
@@ -1743,7 +1743,7 @@ sub test5 {
     # Now do it from the right side
     @test_indexes = ('blah','hello','whaah!');    
     foreach my $index (@test_indexes) {
-        $inv_map->add_index({ -index => $index, -data => {} });
+        $inv_map->add_index({ '-index' => $index, -data => {} });
     }
     while ($#test_indexes > -1) {
         my %test_index_names = map { $_ => 0 } @test_indexes;
@@ -1755,7 +1755,7 @@ sub test5 {
         }
         my @errors = ();
         $test_index_names{$index}++;    
-        while (my $next_index = $inv_map->next_index({ -index => $index })) {
+        while (my $next_index = $inv_map->next_index({ '-index' => $index })) {
             $index = $next_index;
             $test_index_names{$index}++;    
             if ($test_index_names{$index} > 1) {
@@ -1766,7 +1766,7 @@ sub test5 {
             return "failed - Indexes (","@errors",") were read more than once (right)\n";
         }
         my $delete_index = shift @test_indexes;
-        if (not $inv_map->remove_index_from_all({ -index => $delete_index})) {
+        if (not $inv_map->remove_index_from_all({ '-index' => $delete_index})) {
             return "failed - remove_index_from_all failed to remove index '$delete_index'\n";
         }
         

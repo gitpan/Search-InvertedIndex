@@ -8,10 +8,11 @@ use Fcntl qw (:flock);
 use DB_File;
 use Class::NamedParms;
 use Class::ParmList;
+use Tie::DB_File::SplitHash;
 use vars qw (@ISA $VERSION);
 
 @ISA     = qw(Class::NamedParms);
-$VERSION = "1.05";
+$VERSION = "1.06";
 
 # Used to catch attempts to open the same db 
 # to multiple objects simultaneously and to
@@ -86,6 +87,9 @@ used by the Search::InvertedIndex module:
  1.03 1999.07.01 - Documentation corrections.
 
  1.04 1999.10.20 - Removed use of 'use attr' for portability improvement
+
+ 1.06 2000.01.25 - Bugfix (added 'use Tie::DB_File::SplitHash;' to
+                   initialization)
 
 =head2 Public API
 
