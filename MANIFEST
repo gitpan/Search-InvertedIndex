@@ -1,0 +1,11 @@
+MANIFEST
+Makefile.PL
+README
+lib/Search/InvertedIndex.pm
+lib/Search/InvertedIndex/AutoLoader.pm
+lib/Search/InvertedIndex/DB/DB_File_SplitHash.pm
+lib/Search/InvertedIndex/Query.pm
+lib/Search/InvertedIndex/Query/Leaf.pm
+lib/Search/InvertedIndex/Result.pm
+lib/Search/InvertedIndex/Update.pm
+t/base.t
